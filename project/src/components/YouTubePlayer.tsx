@@ -31,16 +31,30 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
   // Reset loading state and preload lyrics when video ID changes
   useEffect(() => {
     if (previousVideoId.current !== videoId) {
+      console.log("Video ID changed from", previousVideoId.current, "to", videoId);
+      // Immediately reset all states
       setIsLoading(true);
       setLoadError(null);
       syncAttemptsRef.current = 0;
       initialLoadRef.current = false;
       
-      // Preload lyrics immediately when videoId changes
-      console.log("New video ID detected, preloading lyrics");
-      loadLyrics(videoId, true);
+      // Clear any previous player
+      if (player) {
+        try {
+          player.stopVideo();
+        } catch (e) {
+          console.warn("Could not stop previous video:", e);
+        }
+      }
+      
+      // Force immediate lyrics loading with 0 delay
+      console.log("New video ID detected, loading lyrics immediately");
+      loadLyrics(videoId, false);
+      
+      // Track the new ID
+      previousVideoId.current = videoId;
     }
-  }, [videoId]);
+  }, [videoId, player]);
   
   // The loadLyrics function with improved error handling and immediate application
   const loadLyrics = async (videoId: string, isPreload = false) => {
@@ -104,9 +118,9 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
   };
 
   const onReady = (event: { target: Player }) => {
-    console.log("YouTube player ready");
+    console.log("YouTube player ready for video:", videoId);
     setPlayer(event.target);
-    setDuration(event.target.getDuration());
+    setDuration(event.target.getDuration() || 0);
     
     // Immediately clear loading state when player is ready
     setIsLoading(false);
@@ -115,6 +129,7 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
     try {
       // Faster loading with lower quality
       event.target.setPlaybackQuality('small');
+      event.target.playVideo();
       
       // Force immediate lyrics load when player is ready
       if ((!lyrics || lyrics.length === 0) && !initialLoadRef.current) {
@@ -125,22 +140,22 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       console.warn("Error setting initial player state:", e);
     }
     
-    // More frequent updates for better synchronization - 33ms for ~30fps smooth updates
+    // More frequent updates - 50ms is generally enough for responsiveness
     if (timerRef.current) {
       window.clearInterval(timerRef.current);
     }
     
     timerRef.current = window.setInterval(() => {
       try {
-        const currentTime = event.target.getCurrentTime();
+        const currentTime = event.target.getCurrentTime() || 0;
         setCurrentTime(currentTime);
         
         const playerState = event.target.getPlayerState();
         const isCurrentlyPlaying = playerState === 1;
         setIsPlaying(isCurrentlyPlaying);
         
-        // Aggressive sync check - if playing but no lyrics
-        if (isCurrentlyPlaying && (!lyrics || lyrics.length === 0) && syncAttemptsRef.current < 4) {
+        // Force lyrics loading if playing but no lyrics
+        if (isCurrentlyPlaying && (!lyrics || lyrics.length === 0) && syncAttemptsRef.current < 3) {
           console.log(`Force reloading lyrics - sync attempt ${syncAttemptsRef.current + 1}`);
           loadLyrics(videoId, false); // Force immediate load
           syncAttemptsRef.current++;
@@ -148,7 +163,7 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       } catch (e) {
         console.warn("Error in player timer update:", e);
       }
-    }, 33); // Smoother updates at ~30fps
+    }, 50);
   };
 
   const onStateChange = (event: any) => {
@@ -211,17 +226,15 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       modestbranding: 1,
       rel: 0,
       playsinline: 1,
-      // Performance optimizations
-      vq: 'small', // Start with lower quality for faster initial load
-      disablekb: 1,
+      // Performance optimizations for faster loading
+      vq: 'small', // Start with lower quality
+      disablekb: 0, // Allow keyboard controls
       iv_load_policy: 3,
-      fs: 0,
-      // Critical for performance - prevent related videos loading
-      cc_load_policy: 0,
-      // Preload metadata only first (faster initial load)
+      fs: 1, // Allow fullscreen
+      // Critical for performance
+      host: window.location.hostname,
       origin: window.location.origin,
-      enablejsapi: 1,
-      widgetid: 1
+      enablejsapi: 1
     },
   };
 

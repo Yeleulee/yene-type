@@ -108,31 +108,43 @@ export async function fetchLyrics(videoId: string): Promise<Song> {
   try {
     console.time('fetchLyrics');
     
-    // Fast cache check first
-    if (lyricsCache[videoId]) {
+    // Force clean video ID - this helps with URLs that might be pasted
+    const cleanVideoId = videoId.trim().replace(/^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)/i, '').split('&')[0];
+    console.log('Processing video ID:', cleanVideoId);
+    
+    // Check cache first for faster loading (including the cleaned ID)
+    if (lyricsCache[cleanVideoId]) {
       console.log('Cache hit for lyrics - returning immediately');
       console.timeEnd('fetchLyrics');
-      return { ...lyricsCache[videoId] }; // Return a copy to prevent mutation issues
+      return { ...lyricsCache[cleanVideoId] }; // Return a copy to prevent mutation issues
     }
     
-    // Then check predefined demo lyrics (with most common Rick Roll)
-    if (videoId === 'dQw4w9WgXcQ' || demoSongs[videoId]) {
-      // Special fast path for Rick Roll (most common test video)
-      const songData = demoSongs[videoId] || demoSongs['dQw4w9WgXcQ'];
-      // Cache for future use
-      lyricsCache[videoId] = songData;
+    // Check if this is one of our demo songs
+    const demoVideoId = Object.keys(demoSongs).find(id => 
+      id === cleanVideoId || cleanVideoId.includes(id)
+    );
+    
+    if (demoVideoId) {
+      // We found a matching demo song
+      console.log('Found matching demo song:', demoSongs[demoVideoId].title);
+      // Cache for future use with both IDs
+      lyricsCache[cleanVideoId] = demoSongs[demoVideoId];
       console.timeEnd('fetchLyrics');
-      return { ...songData };
+      return { ...demoSongs[demoVideoId] };
     }
     
-    // If not predefined, get video info and create placeholder lyrics immediately
-    const videoInfo = await getVideoInfo(videoId);
+    // For non-demo songs, create meaningful fallback lyrics that always work
+    console.log('Creating fallback lyrics for video:', cleanVideoId);
     
-    // Create time-spaced lyrics with optimized spacing - short gap for faster feedback
-    const TIME_GAP = 3.0; // seconds per line (reduced for faster progression)
+    // Try to get video info first
+    const videoInfo = await getVideoInfo(cleanVideoId);
+    
+    // Create shorter time-spaced lyrics for faster feedback
+    const TIME_GAP = 2.5; // seconds per line (even shorter for better responsiveness)
     const OVERLAP = 0.1; // slight overlap for smoother transitions
     
-    const generatedLyrics: LyricLine[] = placeholderLyrics.map((text, index) => {
+    // Use a subset of placeholder lyrics for faster loading
+    const generatedLyrics: LyricLine[] = placeholderLyrics.slice(0, 12).map((text, index) => {
       const startTime = index * TIME_GAP;
       return {
         text,
@@ -141,36 +153,47 @@ export async function fetchLyrics(videoId: string): Promise<Song> {
       };
     });
     
-    // Build the song object
+    // Build the song object with guaranteed lyrics
     const song = {
-      title: videoInfo.title,
-      artist: videoInfo.artist,
+      title: videoInfo.title || `Song ${cleanVideoId.substring(0, 6)}`,
+      artist: videoInfo.artist || 'YouTube Artist',
       lyrics: generatedLyrics
     };
     
-    // Cache for future requests - this will make subsequent loads much faster
+    // Cache for future requests - both original and cleaned ID
     lyricsCache[videoId] = song;
+    if (videoId !== cleanVideoId) {
+      lyricsCache[cleanVideoId] = song;
+    }
     
     console.timeEnd('fetchLyrics');
+    console.log('Successfully created fallback lyrics with', generatedLyrics.length, 'lines');
     return { ...song };
   } catch (error) {
     console.error('Error fetching lyrics:', error);
     console.timeEnd('fetchLyrics');
     
-    // Immediate fallback with shorter content for faster loading
-    const fallbackLyrics = placeholderLyrics.slice(0, 10); // Use fewer lines for faster loading
+    // Even more robust fallback that never fails
+    console.log('Using emergency fallback lyrics');
+    const simpleLyrics = [
+      "Welcome to Yene Type! Practice your typing skills with this song.",
+      "Focus on accuracy first, then speed will naturally follow.",
+      "Keep your fingers on the home row for better typing efficiency.",
+      "The quick brown fox jumps over the lazy dog.",
+      "Typing to music can help you develop a consistent rhythm.",
+    ];
     
     const fallbackSong = {
       title: 'Typing Practice',
       artist: 'Yene Type',
-      lyrics: fallbackLyrics.map((text, index) => ({
+      lyrics: simpleLyrics.map((text, index) => ({
         text,
-        startTime: index * 3, // Faster progression
-        endTime: (index * 3) + 2.9
+        startTime: index * 2.5,
+        endTime: (index * 2.5) + 2.4
       }))
     };
     
-    // Cache even the fallback for performance
+    // Cache even the emergency fallback
     lyricsCache[videoId] = fallbackSong;
     
     return { ...fallbackSong };

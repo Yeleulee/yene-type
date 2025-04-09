@@ -98,15 +98,62 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
     }
   }, [isPlaying, allLyrics, reset]);
 
+  // Improve the useEffect that processes lyrics changes to ensure it works with any song
+  // When lyrics change, combine all lyrics into one continuous text - optimized for immediate response
+  useEffect(() => {
+    // Immediate check for lyrics presence - with better debugging
+    if (!lyrics || lyrics.length === 0) {
+      console.log("No lyrics available yet - resetting typing area");
+      setAllLyrics('');
+      syncStatusRef.current = 'pending';
+      return;
+    }
+    
+    // Join all lyrics with a space between each line - with trimming for cleaner text
+    const combinedLyrics = lyrics.map(lyric => lyric.text.trim()).join(' ');
+    
+    // Log lyrics info to help with debugging
+    console.log(`Lyrics received: ${lyrics.length} lines, ${combinedLyrics.length} characters`);
+    
+    // Always force update immediately for faster response, especially for new songs
+    // Reset state for new lyrics
+    setAllLyrics(combinedLyrics);
+    setCurrentPosition(0);
+    setTypedText('');
+    setStartTime(null);
+    setIsComplete(false);
+    hasAttemptedToFocus.current = false;
+    syncStatusRef.current = 'synced'; // Mark as synced since we got new lyrics
+    
+    // Force focus on text area multiple times
+    focusTextArea();
+    
+    // Force scroll to start position
+    if (lyricsRef.current) {
+      lyricsRef.current.scrollLeft = 0;
+    }
+    
+    // Schedule multiple focus attempts over time for better mobile experience
+    [100, 500, 1000, 2000].forEach(delay => {
+      setTimeout(() => {
+        focusTextArea();
+      }, delay);
+    });
+  }, [lyrics]);
+
   // Enhanced focus mechanism with more aggressive approach
   const focusTextArea = () => {
-    if (!textareaRef.current) return;
+    if (!textareaRef.current) {
+      console.log("Focus attempt failed - no textarea ref");
+      return;
+    }
     
     // Immediate focus attempt
     textareaRef.current.focus();
+    console.log("Focus attempt on typing area");
     
-    // Multiple focus attempts with escalating delays
-    [10, 50, 100, 200, 500, 1000].forEach(delay => {
+    // Multiple focus attempts with shorter delays for better response
+    [10, 50, 100, 200].forEach(delay => {
       setTimeout(() => {
         if (textareaRef.current) {
           // Add blur first to force iOS/mobile to recognize the focus
@@ -121,40 +168,6 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
       }, delay);
     });
   };
-
-  // When lyrics change, combine all lyrics into one continuous text - optimized for immediate response
-  useEffect(() => {
-    // Immediate check for lyrics presence
-    if (!lyrics || lyrics.length === 0) {
-      setAllLyrics('');
-      syncStatusRef.current = 'pending';
-      return;
-    }
-    
-    // Join all lyrics with a space between each line
-    const combinedLyrics = lyrics.map(lyric => lyric.text.trim()).join(' ');
-    
-    // Always update immediately for first load, otherwise check for differences
-    if (!allLyrics || combinedLyrics !== allLyrics) {
-      console.log("New lyrics detected, updating allLyrics");
-      // Reset state for new lyrics
-      setAllLyrics(combinedLyrics);
-      setCurrentPosition(0);
-      setTypedText('');
-      setStartTime(null);
-      setIsComplete(false);
-      hasAttemptedToFocus.current = false;
-      syncStatusRef.current = 'synced'; // Mark as synced since we got new lyrics
-      
-      // Force focus on text area 
-      focusTextArea();
-      
-      // Force scroll to start position
-      if (lyricsRef.current) {
-        lyricsRef.current.scrollLeft = 0;
-      }
-    }
-  }, [lyrics]);
 
   // Listen for isPlaying changes to improve sync
   useEffect(() => {

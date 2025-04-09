@@ -38,6 +38,10 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
   const lyricsRef = useRef<HTMLDivElement>(null);
   const hasAttemptedToFocus = useRef(false);
 
+  // Add a synchronization reference 
+  const syncStatusRef = useRef<'pending' | 'synced' | 'failed'>('pending');
+  const syncAttemptTimeRef = useRef<number | null>(null);
+
   // Reset everything when text changes (meaning a new song was selected)
   useEffect(() => {
     if (text && text !== previousText) {
@@ -61,46 +65,94 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
     }
   }, [text]);
   
-  // Extract focus logic to a reusable function for cleaner code
+  // More aggressive sync and focus handling
+  useEffect(() => {
+    // If music is playing but text isn't ready after a delay, try a forced sync
+    if (isPlaying && (!allLyrics || allLyrics.length === 0) && syncStatusRef.current === 'pending') {
+      if (!syncAttemptTimeRef.current) {
+        syncAttemptTimeRef.current = Date.now();
+        // Immediately attempt to sync by clearing any existing state
+        setTypedText('');
+        setCurrentPosition(0);
+        setStartTime(null);
+        setErrors(0);
+        hasAttemptedToFocus.current = false;
+        focusTextArea();
+      } else if (Date.now() - syncAttemptTimeRef.current > 2000) { // Reduced timeout
+        // It's been more than 2 seconds and still no lyrics - try a direct reset approach
+        console.log("Force sync: No lyrics after 2 seconds of playback - attempting recovery");
+        
+        // Trigger the reset action in the typing store which should propagate to other components
+        reset();
+        syncStatusRef.current = 'failed';
+        
+        // Force focus again
+        focusTextArea();
+      }
+    }
+    
+    // When lyrics arrive, mark as synced and reset the attempt time
+    if (allLyrics && allLyrics.length > 0) {
+      syncStatusRef.current = 'synced';
+      syncAttemptTimeRef.current = null;
+    }
+  }, [isPlaying, allLyrics, reset]);
+
+  // Enhanced focus mechanism with more aggressive approach
   const focusTextArea = () => {
     if (!textareaRef.current) return;
     
     // Immediate focus attempt
     textareaRef.current.focus();
     
-    // Multiple focus attempts with escalating delays to ensure we catch the right moment
-    [50, 100, 200, 500, 1000, 2000].forEach(delay => {
+    // Multiple focus attempts with escalating delays
+    [10, 50, 100, 200, 500, 1000].forEach(delay => {
       setTimeout(() => {
         if (textareaRef.current) {
-          textareaRef.current.focus();
-          if (delay >= 500) hasAttemptedToFocus.current = true;
+          // Add blur first to force iOS/mobile to recognize the focus
+          textareaRef.current.blur();
+          setTimeout(() => {
+            if (textareaRef.current) {
+              textareaRef.current.focus();
+              hasAttemptedToFocus.current = true;
+            }
+          }, 5);
         }
       }, delay);
     });
   };
 
-  // When lyrics change, combine all lyrics into one continuous text
+  // When lyrics change, combine all lyrics into one continuous text - optimized for immediate response
   useEffect(() => {
-    if (lyrics && lyrics.length > 0) {
-      // Join all lyrics with a space between each line
-      const combinedLyrics = lyrics.map(lyric => lyric.text).join(' ');
-      
-      // Only update if we have new lyrics
-      if (combinedLyrics !== allLyrics) {
-        console.log("New lyrics detected, updating allLyrics");
-        setAllLyrics(combinedLyrics);
-        setCurrentPosition(0);
-        setTypedText('');
-        setStartTime(null);
-        setIsComplete(false);
-        hasAttemptedToFocus.current = false;
-        
-        // Focus on text area with our enhanced focus function
-        focusTextArea();
-      }
-    } else {
-      // Reset if no lyrics available
+    // Immediate check for lyrics presence
+    if (!lyrics || lyrics.length === 0) {
       setAllLyrics('');
+      syncStatusRef.current = 'pending';
+      return;
+    }
+    
+    // Join all lyrics with a space between each line
+    const combinedLyrics = lyrics.map(lyric => lyric.text.trim()).join(' ');
+    
+    // Always update immediately for first load, otherwise check for differences
+    if (!allLyrics || combinedLyrics !== allLyrics) {
+      console.log("New lyrics detected, updating allLyrics");
+      // Reset state for new lyrics
+      setAllLyrics(combinedLyrics);
+      setCurrentPosition(0);
+      setTypedText('');
+      setStartTime(null);
+      setIsComplete(false);
+      hasAttemptedToFocus.current = false;
+      syncStatusRef.current = 'synced'; // Mark as synced since we got new lyrics
+      
+      // Force focus on text area 
+      focusTextArea();
+      
+      // Force scroll to start position
+      if (lyricsRef.current) {
+        lyricsRef.current.scrollLeft = 0;
+      }
     }
   }, [lyrics]);
 
@@ -164,29 +216,76 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
     }
   }, [typedText, errors, startTime, allLyrics]);
 
+  // Enhanced typing handler with better performance
   const handleTyping = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     if (!allLyrics) return;
     
     const newTypedText = e.target.value;
+    
+    // Performance optimization: only update if text actually changed
+    if (newTypedText === typedText) return;
+    
     setTypedText(newTypedText);
     setCurrentPosition(newTypedText.length);
 
-    // Calculate errors
+    // Calculate errors - optimized for performance
     let newErrors = 0;
-    for (let i = 0; i < newTypedText.length; i++) {
-      if (i >= allLyrics.length || newTypedText[i] !== allLyrics[i]) {
+    const minLength = Math.min(newTypedText.length, allLyrics.length);
+    for (let i = 0; i < minLength; i++) {
+      if (newTypedText[i] !== allLyrics[i]) {
         newErrors++;
       }
     }
+    
+    // Add errors for extra typed characters beyond lyrics length
+    if (newTypedText.length > allLyrics.length) {
+      newErrors += newTypedText.length - allLyrics.length;
+    }
+    
     setErrors(newErrors);
 
-    // Auto-scroll the lyrics display
+    // Optimized auto-scroll with smoother scrolling
     if (lyricsRef.current) {
       const textWidth = 10; // Approximate width of a character in pixels
       const containerWidth = lyricsRef.current.offsetWidth;
       const charsVisible = Math.floor(containerWidth / textWidth);
-      const scrollPosition = Math.max(0, newTypedText.length - charsVisible / 2);
-      lyricsRef.current.scrollLeft = scrollPosition * textWidth;
+      const scrollPosition = Math.max(0, newTypedText.length - charsVisible / 3); // More context ahead
+      
+      // Use smooth scrolling for better UX
+      lyricsRef.current.scrollTo({
+        left: scrollPosition * textWidth,
+        behavior: 'smooth'
+      });
+    }
+    
+    // Start timer on first character
+    if (newTypedText.length === 1 && !startTime) {
+      setStartTime(Date.now());
+      setIsComplete(false);
+    }
+    
+    // Check completion
+    if (newTypedText.length >= allLyrics.length && !isComplete) {
+      setIsComplete(true);
+      
+      // Calculate final stats
+      const timeElapsed = (Date.now() - (startTime || Date.now())) / 1000;
+      const finalWPM = calculateWPM(newTypedText.length, timeElapsed, newErrors);
+      const finalAccuracy = calculateAccuracy(
+        newTypedText.length - newErrors,
+        newTypedText.length
+      );
+      
+      // Set final stats and add high score
+      setWPM(finalWPM);
+      setAccuracy(finalAccuracy);
+      
+      addHighScore({
+        wpm: finalWPM,
+        accuracy: finalAccuracy,
+        mode: 'lyrics',
+        songTitle: allLyrics.substring(0, 20) + '...'
+      });
     }
   };
 

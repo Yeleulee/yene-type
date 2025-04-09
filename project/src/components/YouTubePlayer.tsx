@@ -42,7 +42,7 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
     }
   }, [videoId]);
   
-  // The loadLyrics function with improved error handling and retry capability
+  // The loadLyrics function with improved error handling and immediate application
   const loadLyrics = async (videoId: string, isPreload = false) => {
     try {
       if (!isPreload) {
@@ -59,7 +59,7 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       
       // Ensure we have valid lyrics before proceeding
       if (song.lyrics && song.lyrics.length > 0) {
-        // Apply lyrics immediately with no debounce delay
+        // Apply lyrics IMMEDIATELY for better responsiveness
         console.log(`Loaded ${song.lyrics.length} lyric lines`);
         
         // Format lyrics better for typing practice - add proper spacing
@@ -70,18 +70,15 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
         
         const combinedText = enhancedLyrics.map(lyric => lyric.text).join(' ');
         
-        // Add a slight delay to ensure UI is ready
-        setTimeout(() => {
-          changeSong(enhancedLyrics, combinedText);
-          initialLoadRef.current = true;
-          
-          if (!isPreload) {
-            setIsLoading(false);
-          }
-          
-          // Show a toast or notification that lyrics are ready
-          console.log("Lyrics ready for typing!");
-        }, 300);
+        // Apply immediately without delay
+        changeSong(enhancedLyrics, combinedText);
+        initialLoadRef.current = true;
+        
+        if (!isPreload) {
+          setIsLoading(false);
+        }
+        
+        console.log("Lyrics ready for typing!");
       } else {
         // Handle empty lyrics case
         setLoadError('No lyrics found for this song. Please try another.');
@@ -90,13 +87,13 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
         }
       }
     } catch (error) {
-      console.error('Error loading lyrics:', error);
+      console.error('Error fetching lyrics:', error);
       setLoadError('Failed to load lyrics. Please try again or select another song.');
       
-      // Retry once after error if it's not already a retry attempt
+      // Retry immediately after error if it's not already a retry attempt
       if (syncAttemptsRef.current < 2) {
         console.log(`Retrying lyrics load after error (attempt ${syncAttemptsRef.current + 1})`);
-        setTimeout(() => loadLyrics(videoId), 2000);
+        setTimeout(() => loadLyrics(videoId, false), 500); // Retry sooner
         syncAttemptsRef.current++;
       }
       
@@ -111,21 +108,24 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
     setPlayer(event.target);
     setDuration(event.target.getDuration());
     
+    // Immediately clear loading state when player is ready
+    setIsLoading(false);
+    
     // Apply optimal settings for fast playback
     try {
-      // Try lowering quality first for faster loading
-      event.target.setPlaybackQuality('medium');
+      // Faster loading with lower quality
+      event.target.setPlaybackQuality('small');
       
-      // If player is ready but lyrics haven't loaded yet, force a reload
+      // Force immediate lyrics load when player is ready
       if ((!lyrics || lyrics.length === 0) && !initialLoadRef.current) {
-        console.log("Player ready but no lyrics - forcing lyrics load");
-        loadLyrics(videoId);
+        console.log("Player ready but no lyrics - forcing immediate lyrics load");
+        loadLyrics(videoId, false); // Not a preload - force immediate load
       }
     } catch (e) {
       console.warn("Error setting initial player state:", e);
     }
     
-    // Update time frequently for better responsiveness - 40ms for smoother updates
+    // More frequent updates for better synchronization - 33ms for ~30fps smooth updates
     if (timerRef.current) {
       window.clearInterval(timerRef.current);
     }
@@ -135,21 +135,20 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
         const currentTime = event.target.getCurrentTime();
         setCurrentTime(currentTime);
         
-        // Check if player is actually playing
         const playerState = event.target.getPlayerState();
         const isCurrentlyPlaying = playerState === 1;
         setIsPlaying(isCurrentlyPlaying);
         
-        // If video is playing but we don't have lyrics yet AND we've not exceeded retry attempts
-        if (isCurrentlyPlaying && (!lyrics || lyrics.length === 0) && syncAttemptsRef.current < 3) {
+        // Aggressive sync check - if playing but no lyrics
+        if (isCurrentlyPlaying && (!lyrics || lyrics.length === 0) && syncAttemptsRef.current < 4) {
           console.log(`Force reloading lyrics - sync attempt ${syncAttemptsRef.current + 1}`);
-          loadLyrics(videoId);
+          loadLyrics(videoId, false); // Force immediate load
           syncAttemptsRef.current++;
         }
       } catch (e) {
         console.warn("Error in player timer update:", e);
       }
-    }, 40); // Reduced for smoother updates
+    }, 33); // Smoother updates at ~30fps
   };
 
   const onStateChange = (event: any) => {
@@ -157,8 +156,10 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
     // 1 = playing, 2 = paused, 0 = ended, 3 = buffering
     setIsPlaying(playerState === 1);
     
-    // When video starts playing after a pause or when buffering completes, make sure we're fully synced
+    // Clear loading state when video starts playing
     if (playerState === 1) {
+      setIsLoading(false);
+      
       // Force update the current time
       const currentTime = event.target.getCurrentTime();
       setCurrentTime(currentTime);
@@ -166,7 +167,7 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       // When playback starts but we still don't have lyrics
       if ((!lyrics || lyrics.length === 0) && syncAttemptsRef.current < 3) {
         console.log(`Video playing but no lyrics - loading attempt ${syncAttemptsRef.current + 1}`);
-        loadLyrics(videoId);
+        loadLyrics(videoId, false); // Force immediate load
         syncAttemptsRef.current++;
       }
     }
@@ -200,7 +201,7 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
     };
   }, [videoId, changeSong]);
   
-  // Improve player options for faster loading and better performance
+  // Optimize YouTube player options for faster loading
   const opts = {
     height: '100%',
     width: '100%',
@@ -210,16 +211,17 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       modestbranding: 1,
       rel: 0,
       playsinline: 1,
-      // Start with lower quality for faster initial load
-      vq: 'medium',
-      // Disable keyboard controls to prevent interference with typing
+      // Performance optimizations
+      vq: 'small', // Start with lower quality for faster initial load
       disablekb: 1,
-      // Improve performance with fewer related videos
       iv_load_policy: 3,
-      // Disable annotations for better performance
-      annotations: 0,
-      // Preload for faster start
-      fs: 0
+      fs: 0,
+      // Critical for performance - prevent related videos loading
+      cc_load_policy: 0,
+      // Preload metadata only first (faster initial load)
+      origin: window.location.origin,
+      enablejsapi: 1,
+      widgetid: 1
     },
   };
 
@@ -286,58 +288,80 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
                   <p className="text-gray-300 mb-6 opacity-80">{songInfo.artist}</p>
                 </motion.div>
                 
-                {/* YouTube Music style lyrics display - enhanced styling */}
+                {/* Enhanced YouTube Music style lyrics display */}
                 {lyrics && lyrics.length > 0 ? (
-                  <div className="mt-6 text-left max-h-36 overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent px-2">
+                  <div className="mt-4 text-left max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent px-2 pb-4">
                     {lyrics.map((line, index) => {
                       const isActive = currentTime >= line.startTime && currentTime <= line.endTime;
                       const isPast = currentTime > line.endTime;
+                      const isUpcoming = currentTime < line.startTime && currentTime > line.startTime - 8;
                       return (
                         <motion.div
                           key={index}
-                          className={`py-2 px-3 my-1.5 rounded-lg transition-all ${
+                          className={`py-2.5 px-4 my-2 rounded-lg transition-colors leading-relaxed ${
                             isActive 
-                              ? 'bg-white/20 text-white font-bold border-l-4 border-white/50' 
+                              ? 'bg-white/25 backdrop-blur-sm text-white font-bold border-l-4 border-white/70' 
                               : isPast 
-                                ? 'text-gray-300/60' 
-                                : 'text-gray-300/80'
+                                ? 'text-gray-300/50' 
+                                : isUpcoming
+                                  ? 'text-gray-200/90'
+                                  : 'text-gray-300/70'
                           }`}
-                          initial={{ opacity: 0.7 }}
+                          initial={{ opacity: 0.5, y: 10 }}
                           animate={{ 
-                            opacity: isActive ? 1 : isPast ? 0.6 : 0.8,
+                            opacity: isActive ? 1 : isPast ? 0.5 : isUpcoming ? 0.85 : 0.7,
                             scale: isActive ? 1.05 : 1,
-                            x: isActive ? 8 : 0,
-                            height: 'auto'
+                            x: isActive ? 10 : 0,
+                            y: isActive ? 0 : isPast ? 0 : isUpcoming ? 5 : 10,
                           }}
                           transition={{
-                            duration: 0.3,
+                            duration: isActive ? 0.3 : 0.5,
                             ease: "easeInOut"
                           }}
                         >
-                          {line.text}
+                          {/* Enhanced text with letter spacing for karaoke effect */}
+                          <span className={isActive ? 'tracking-wide' : 'tracking-normal'}>
+                            {line.text}
+                          </span>
+                          
+                          {/* Active line indicator animation */}
+                          {isActive && (
+                            <motion.div 
+                              className="h-0.5 bg-white/70 rounded-full mt-1.5"
+                              initial={{ width: "0%" }}
+                              animate={{ 
+                                width: "100%",
+                              }}
+                              transition={{
+                                duration: line.endTime - line.startTime,
+                                ease: "linear"
+                              }}
+                            />
+                          )}
                         </motion.div>
                       );
                     })}
                   </div>
                 ) : (
-                  // Audio visualizer bars (animated) as fallback when no lyrics
-                  <div className="flex items-end justify-center h-12 gap-1 mt-4">
-                    {[...Array(20)].map((_, i) => (
+                  // Enhanced audio visualizer with more bars and smoother animation
+                  <div className="flex items-end justify-center h-24 gap-0.5 mt-6">
+                    {[...Array(32)].map((_, i) => (
                       <motion.div
                         key={i}
-                        className="w-1.5 bg-white bg-opacity-80 rounded-full"
+                        className="w-1 bg-gradient-to-t from-white to-white/50 rounded-t-full"
                         animate={{
                           height: [
-                            Math.random() * 15 + 5,
-                            Math.random() * 35 + 10,
+                            Math.random() * 10 + 2,
+                            Math.random() * 40 + 10,
                             Math.random() * 15 + 5
                           ]
                         }}
                         transition={{
-                          duration: 1.5,
+                          duration: 1.2,
                           repeat: Infinity,
                           repeatType: "reverse",
-                          delay: i * 0.05
+                          ease: "easeInOut",
+                          delay: i * 0.03
                         }}
                       />
                     ))}
@@ -353,6 +377,19 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
               <div className="text-white text-center">
                 <Loader className="w-12 h-12 mx-auto mb-3 animate-spin" />
                 <p className="font-medium">Loading song data...</p>
+                {syncAttemptsRef.current > 1 && (
+                  <button 
+                    onClick={() => {
+                      setIsLoading(false);
+                      if (player) {
+                        player.playVideo();
+                      }
+                    }}
+                    className="mt-3 px-3 py-1 bg-white/20 text-white rounded-lg text-sm hover:bg-white/30"
+                  >
+                    Skip loading
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -427,7 +464,9 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
           <p className={`${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
             {isLoading 
               ? "Loading lyrics for typing practice..." 
-              : "Lyrics are now ready! Click in the typing area and start typing along with the song."}
+              : lyrics && lyrics.length > 0
+                ? "Lyrics are now ready! Click in the typing area and start typing along with the song."
+                : "Waiting for lyrics to load. The song will play shortly."}
           </p>
         </div>
       </div>

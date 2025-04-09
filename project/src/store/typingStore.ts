@@ -123,7 +123,8 @@ export const useTypingStore = create<TypingState>()(
         accuracy: 100,
         errors: 0,
         currentLyric: null,
-        lastCompletedLineIndex: -1
+        lastCompletedLineIndex: -1,
+        isPlaying: true
       })
     }),
     {

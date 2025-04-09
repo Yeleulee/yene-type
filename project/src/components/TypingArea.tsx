@@ -51,6 +51,7 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
   const focusTimeoutRefs = useRef<number[]>([]);
   const syncStatusRef = useRef<'pending' | 'synced' | 'failed'>('pending');
   const syncAttemptTimeRef = useRef<number | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
 
   // Clear all timeouts on unmount to prevent memory leaks
   useEffect(() => {
@@ -133,14 +134,18 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
     textareaRef.current.focus();
     console.log("Focus attempt on typing area");
     
-    // Scheduled focus attempts with increasing delays
-    const delays = [100, 500, 1000];
+    // More aggressive focus - try multiple times with increasing delays
+    const delays = [100, 300, 500, 1000, 2000];
     
     delays.forEach(delay => {
       const timeoutId = window.setTimeout(() => {
         if (textareaRef.current) {
+          console.log(`Retry focus at ${delay}ms`);
           textareaRef.current.focus();
           hasAttemptedToFocus.current = true;
+          
+          // Force a click on the textarea as well
+          textareaRef.current.click();
         }
       }, delay);
       
@@ -214,12 +219,20 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
 
   // Enhanced typing handler with better performance
   const handleTyping = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    if (!allLyrics) return;
+    if (!allLyrics) {
+      console.log("[DEBUG] Typing attempted but no lyrics loaded");
+      return;
+    }
     
     const newTypedText = e.target.value;
     
     // Performance optimization: only update if text actually changed
     if (newTypedText === typedText) return;
+    
+    // Log first character typed for debugging
+    if (typedText.length === 0 && newTypedText.length > 0) {
+      console.log(`[DEBUG] First character typed: "${newTypedText}"`);
+    }
     
     setTypedText(newTypedText);
     setCurrentPosition(newTypedText.length);
@@ -253,6 +266,12 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
         left: scrollPosition * avgCharWidth,
         behavior: 'smooth'
       });
+    }
+    
+    // Keep the focus on the typing area
+    if (textareaRef.current && document.activeElement !== textareaRef.current) {
+      console.log("[DEBUG] Re-focusing textarea during typing");
+      textareaRef.current.focus();
     }
   };
 
@@ -355,6 +374,21 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
     );
   };
 
+  // Add keyboard shortcut for debug mode (Ctrl+Shift+D)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+        setShowDebug(!showDebug);
+        e.preventDefault();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showDebug]);
+
   return (
     <motion.div 
       className={`w-full h-full flex flex-col gap-4 rounded-xl cursor-text transition-all ${
@@ -367,6 +401,38 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.2 }}
     >
+      {/* Debug Overlay */}
+      {showDebug && (
+        <div className="fixed top-0 right-0 bg-black/80 text-green-400 p-4 m-4 rounded-lg z-50 font-mono text-xs overflow-auto max-h-96 w-80">
+          <h3 className="text-white mb-2 font-bold">Debug Info (Ctrl+Shift+D)</h3>
+          <div>
+            <p>Text Loaded: {Boolean(allLyrics) ? '✅' : '❌'}</p>
+            <p>Text Length: {allLyrics?.length || 0} chars</p>
+            <p>Typed: {typedText.length} chars</p>
+            <p>isPlaying: {isPlaying ? '✅' : '❌'}</p>
+            <p>startTime: {startTime ? '✅' : '❌'}</p>
+            <p>Focus Attempts: {focusTimeoutRefs.current.length}</p>
+            <p>Sync Status: {syncStatusRef.current}</p>
+            <p>Lyrics Position: {currentPosition}</p>
+            <p>WPM: {wpm}</p>
+            <p>Accuracy: {accuracy}%</p>
+            <p>Errors: {errors}</p>
+            <button 
+              onClick={handleReset}
+              className="mt-2 bg-red-500 text-white px-2 py-1 rounded text-xs"
+            >
+              Force Reset
+            </button>
+            <button 
+              onClick={focusTextArea}
+              className="mt-2 ml-2 bg-blue-500 text-white px-2 py-1 rounded text-xs"
+            >
+              Force Focus
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -618,14 +684,15 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
         )}
       </div>
 
-      {/* Hidden textarea for typing */}
+      {/* Hidden textarea for typing - make slightly more visible during development */}
       <div className="relative">
         <textarea
           ref={textareaRef}
           value={typedText}
           onChange={handleTyping}
           disabled={!allLyrics || isComplete}
-          className="absolute top-0 left-0 w-full h-1 opacity-0 focus:outline-none resize-none"
+          className="absolute top-0 left-0 w-full h-12 opacity-10 focus:opacity-20 focus:outline-none resize-none" 
+          // ^ Increased height and slightly visible for debugging, revert to opacity-0 for production
           spellCheck={false}
           autoComplete="off"
           autoCorrect="off"

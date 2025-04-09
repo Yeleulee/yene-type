@@ -76,7 +76,7 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
         setIsLoading(true);
       }
       
-      console.log(`Loading lyrics for video ${videoId}${isPreload ? ' (preload)' : ''}`);
+      console.log(`[DEBUG] Loading lyrics for video ${videoId}${isPreload ? ' (preload)' : ''}`);
       const song = await fetchLyrics(videoId);
       
       setSongInfo({
@@ -87,7 +87,7 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       // Ensure we have valid lyrics before proceeding
       if (song.lyrics && song.lyrics.length > 0) {
         // Apply lyrics IMMEDIATELY for better responsiveness
-        console.log(`Loaded ${song.lyrics.length} lyric lines`);
+        console.log(`[DEBUG] Loaded ${song.lyrics.length} lyric lines`);
         
         // Format lyrics better for typing practice - add proper spacing
         const enhancedLyrics = song.lyrics.map(lyric => ({
@@ -96,6 +96,7 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
         }));
         
         const combinedText = enhancedLyrics.map(lyric => lyric.text).join(' ');
+        console.log(`[DEBUG] Combined lyrics text: ${combinedText.substring(0, 50)}...`);
         
         // Apply immediately without delay
         changeSong(enhancedLyrics, combinedText);
@@ -105,22 +106,29 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
           setIsLoading(false);
         }
         
-        console.log("Lyrics ready for typing!");
+        console.log("[DEBUG] Lyrics ready for typing!");
+        
+        // Force a small delay before attempting to apply again (redundancy to ensure it works)
+        setTimeout(() => {
+          console.log("[DEBUG] Re-applying lyrics as backup");
+          changeSong(enhancedLyrics, combinedText);
+        }, 1000);
       } else {
         // Handle empty lyrics case
+        console.error("[DEBUG] No lyrics found for this song");
         setLoadError('No lyrics found for this song. Please try another.');
         if (!isPreload) {
           setIsLoading(false);
         }
       }
     } catch (error) {
-      console.error('Error fetching lyrics:', error);
+      console.error('[DEBUG] Error fetching lyrics:', error);
       setLoadError('Failed to load lyrics. Please try again or select another song.');
       
       // Retry immediately after error if it's not already a retry attempt
-      if (syncAttemptsRef.current < 2) {
-        console.log(`Retrying lyrics load after error (attempt ${syncAttemptsRef.current + 1})`);
-        setTimeout(() => loadLyrics(videoId, false), 500); // Retry sooner
+      if (syncAttemptsRef.current < 3) { // Increased retry attempts
+        console.log(`[DEBUG] Retrying lyrics load after error (attempt ${syncAttemptsRef.current + 1})`);
+        setTimeout(() => loadLyrics(videoId, false), 800); // Slightly longer delay for stability
         syncAttemptsRef.current++;
       }
       

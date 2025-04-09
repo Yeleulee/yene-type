@@ -106,16 +106,29 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
     setPlayer(event.target);
     setDuration(event.target.getDuration());
     
-    // Just update time for display purposes, not for lyrics syncing
+    // Update time more frequently for better responsiveness
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+    }
     timerRef.current = window.setInterval(() => {
       const currentTime = event.target.getCurrentTime();
       setCurrentTime(currentTime);
-    }, 500);
+      
+      // Check if player is actually playing (some browsers might pause without events)
+      setIsPlaying(event.target.getPlayerState() === 1);
+    }, 100); // Reduced from 500ms to 100ms for better sync
   };
 
   const onStateChange = (event: any) => {
-    const isPlaying = event.data === 1;
-    setIsPlaying(isPlaying);
+    const playerState = event.data;
+    // 1 = playing, 2 = paused, 0 = ended, 3 = buffering
+    setIsPlaying(playerState === 1);
+    
+    // When video starts playing after a pause, make sure we're synced
+    if (playerState === 1) {
+      // Force update the current time
+      setCurrentTime(event.target.getCurrentTime());
+    }
   };
 
   const onError = (error: any) => {

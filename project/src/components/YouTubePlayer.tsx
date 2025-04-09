@@ -24,6 +24,7 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
   });
   const timerRef = useRef<number | null>(null);
   const previousVideoId = useRef<string | null>(null);
+  const changeSongTimeoutRef = useRef<any>(null);
 
   // Reset loading state when video ID changes
   useEffect(() => {
@@ -32,6 +33,20 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       setLoadError(null);
     }
   }, [videoId]);
+
+  // Safe wrapper for changeSong with debounce
+  const safeChangeSong = (lyrics: any[], text: string) => {
+    // Clear any existing timeout
+    if (changeSongTimeoutRef.current) {
+      clearTimeout(changeSongTimeoutRef.current);
+    }
+    
+    // Set a small delay to ensure state consistency
+    changeSongTimeoutRef.current = setTimeout(() => {
+      console.log('Calling changeSong with lyrics length:', lyrics.length);
+      changeSong(lyrics, text);
+    }, 100);
+  };
 
   useEffect(() => {
     // Check if the video ID has changed
@@ -47,9 +62,15 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
             artist: song.artist
           });
           
-          // Load the combined lyrics text for typing using the new changeSong method
-          const combinedText = song.lyrics.map(lyric => lyric.text).join(' ');
-          changeSong(song.lyrics, combinedText);
+          // Ensure we have valid lyrics before proceeding
+          if (song.lyrics && song.lyrics.length > 0) {
+            // Load the combined lyrics text for typing using the new changeSong method
+            const combinedText = song.lyrics.map(lyric => lyric.text).join(' ');
+            safeChangeSong(song.lyrics, combinedText);
+          } else {
+            // Handle empty lyrics case
+            setLoadError('No lyrics found for this song. Please try another.');
+          }
           setIsLoading(false);
         } catch (error) {
           console.error('Error loading lyrics:', error);
@@ -63,6 +84,9 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
     return () => {
       if (timerRef.current) {
         window.clearInterval(timerRef.current);
+      }
+      if (changeSongTimeoutRef.current) {
+        clearTimeout(changeSongTimeoutRef.current);
       }
     };
   }, [videoId, changeSong]);

@@ -82,9 +82,28 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
         setStartTime(null);
         setIsComplete(false);
         hasAttemptedToFocus.current = false;
+        
+        // Force focus on text area
+        if (textareaRef.current) {
+          setTimeout(() => {
+            if (textareaRef.current) {
+              textareaRef.current.focus();
+            }
+          }, 500);
+        }
       }
+    } else {
+      // Reset if no lyrics available
+      setAllLyrics('');
     }
   }, [lyrics]);
+
+  // Debug logging - add this to help troubleshoot
+  useEffect(() => {
+    console.log("Text from store:", text);
+    console.log("All lyrics state:", allLyrics);
+    console.log("Lyrics array:", lyrics);
+  }, [text, allLyrics, lyrics]);
 
   useEffect(() => {
     if (typedText.length === 1 && !startTime) {
@@ -160,7 +179,15 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
   };
 
   const renderMonkeyTypeLyrics = () => {
-    if (!allLyrics) return null;
+    if (!allLyrics || allLyrics.length === 0) {
+      return (
+        <div className="font-mono text-xl text-center py-4">
+          <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>
+            {isPlaying ? 'Waiting for lyrics...' : 'Play a song to see lyrics here'}
+          </span>
+        </div>
+      );
+    }
     
     return (
       <div 

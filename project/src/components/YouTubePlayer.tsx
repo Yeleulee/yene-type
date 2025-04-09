@@ -11,7 +11,7 @@ interface YouTubePlayerProps {
 }
 
 export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
-  const { changeSong, isPlaying, setIsPlaying } = useTypingStore();
+  const { changeSong, isPlaying, setIsPlaying, lyrics } = useTypingStore();
   const [player, setPlayer] = useState<Player | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -48,37 +48,63 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
     }, 100);
   };
 
+  const onReady = (event: { target: Player }) => {
+    setPlayer(event.target);
+    setDuration(event.target.getDuration());
+    
+    // Update time more frequently for better responsiveness - reduce interval to 50ms for tighter sync
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+    }
+    timerRef.current = window.setInterval(() => {
+      const currentTime = event.target.getCurrentTime();
+      setCurrentTime(currentTime);
+      
+      // Check if player is actually playing (some browsers might pause without events)
+      const playerState = event.target.getPlayerState();
+      setIsPlaying(playerState === 1);
+      
+      // Force lyrics re-sync if player is playing but we don't have lyrics yet
+      if (playerState === 1 && !loadError && lyrics && lyrics.length === 0) {
+        console.log("Force reloading lyrics due to sync issue");
+        loadLyrics(videoId);
+      }
+    }, 50); // Reduced from 100ms to 50ms for better sync
+  };
+  
+  // Extract loadLyrics function to be reusable
+  const loadLyrics = async (videoId: string) => {
+    try {
+      setIsLoading(true);
+      const song = await fetchLyrics(videoId);
+      setSongInfo({
+        title: song.title,
+        artist: song.artist
+      });
+      
+      // Ensure we have valid lyrics before proceeding
+      if (song.lyrics && song.lyrics.length > 0) {
+        // Load the combined lyrics text for typing using the new changeSong method with NO debounce
+        // The debounce is causing sync issues, we want immediate lyrics loading
+        const combinedText = song.lyrics.map(lyric => lyric.text).join(' ');
+        changeSong(song.lyrics, combinedText);
+      } else {
+        // Handle empty lyrics case
+        setLoadError('No lyrics found for this song. Please try another.');
+      }
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Error loading lyrics:', error);
+      setLoadError('Failed to load lyrics. Please try again or select another song.');
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     // Check if the video ID has changed
     if (previousVideoId.current !== videoId) {
       previousVideoId.current = videoId;
-      
-      const loadLyrics = async () => {
-        try {
-          setIsLoading(true);
-          const song = await fetchLyrics(videoId);
-          setSongInfo({
-            title: song.title,
-            artist: song.artist
-          });
-          
-          // Ensure we have valid lyrics before proceeding
-          if (song.lyrics && song.lyrics.length > 0) {
-            // Load the combined lyrics text for typing using the new changeSong method
-            const combinedText = song.lyrics.map(lyric => lyric.text).join(' ');
-            safeChangeSong(song.lyrics, combinedText);
-          } else {
-            // Handle empty lyrics case
-            setLoadError('No lyrics found for this song. Please try another.');
-          }
-          setIsLoading(false);
-        } catch (error) {
-          console.error('Error loading lyrics:', error);
-          setLoadError('Failed to load lyrics. Please try again or select another song.');
-          setIsLoading(false);
-        }
-      };
-      loadLyrics();
+      loadLyrics(videoId);
     }
 
     return () => {
@@ -99,24 +125,13 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       controls: 1,
       modestbranding: 1,
       rel: 0,
+      // Add playsinline for better mobile performance
+      playsinline: 1,
+      // Improve performance with fewer related videos
+      iv_load_policy: 3,
+      // Disable annotations for better performance
+      annotations: 0
     },
-  };
-
-  const onReady = (event: { target: Player }) => {
-    setPlayer(event.target);
-    setDuration(event.target.getDuration());
-    
-    // Update time more frequently for better responsiveness
-    if (timerRef.current) {
-      window.clearInterval(timerRef.current);
-    }
-    timerRef.current = window.setInterval(() => {
-      const currentTime = event.target.getCurrentTime();
-      setCurrentTime(currentTime);
-      
-      // Check if player is actually playing (some browsers might pause without events)
-      setIsPlaying(event.target.getPlayerState() === 1);
-    }, 100); // Reduced from 500ms to 100ms for better sync
   };
 
   const onStateChange = (event: any) => {
@@ -124,18 +139,43 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
     // 1 = playing, 2 = paused, 0 = ended, 3 = buffering
     setIsPlaying(playerState === 1);
     
-    // When video starts playing after a pause, make sure we're synced
+    // When video starts playing after a pause or when buffering completes, make sure we're fully synced
     if (playerState === 1) {
       // Force update the current time
-      setCurrentTime(event.target.getCurrentTime());
+      const currentTime = event.target.getCurrentTime();
+      setCurrentTime(currentTime);
+      
+      // If we have a player but no lyrics yet, try to reload lyrics
+      if (lyrics.length === 0 && !loadError) {
+        console.log("Video started playing but no lyrics - reloading lyrics");
+        loadLyrics(videoId);
+      }
+    }
+    
+    // Handle buffering state for user feedback
+    if (playerState === 3) {
+      console.log("Video is buffering");
     }
   };
 
   const onError = (error: any) => {
     console.error('YouTube player error:', error);
-    setLoadError('Error loading video. Please try another song.');
+    setLoadError(`Error loading video (code ${error.data}). Please try another song.`);
     setIsLoading(false);
   };
+  
+  // Preload optimization - once the player is available, set playback quality
+  useEffect(() => {
+    if (player) {
+      // Set a lower quality to improve performance if needed
+      // Options: small, medium, large, hd720, hd1080, highres
+      try {
+        player.setPlaybackQuality('medium');
+      } catch (e) {
+        console.warn("Could not set playback quality", e);
+      }
+    }
+  }, [player]);
 
   return (
     <div className="space-y-4">

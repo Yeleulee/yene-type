@@ -55,8 +55,16 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
         lyricsRef.current.scrollLeft = 0;
       }
       
-      // Re-focus the textarea when new lyrics are loaded
-      if (textareaRef.current && !hasAttemptedToFocus.current) {
+      // Re-focus the textarea when new lyrics are loaded - immediately try to focus
+      if (textareaRef.current) {
+        // Immediate focus attempt
+        textareaRef.current.focus();
+        
+        // Backup focus attempts with increasing delays
+        setTimeout(() => {
+          if (textareaRef.current) textareaRef.current.focus();
+        }, 100);
+        
         setTimeout(() => {
           if (textareaRef.current) {
             textareaRef.current.focus();
@@ -83,13 +91,17 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
         setIsComplete(false);
         hasAttemptedToFocus.current = false;
         
-        // Force focus on text area
+        // Force focus on text area with multiple attempts
         if (textareaRef.current) {
-          setTimeout(() => {
-            if (textareaRef.current) {
-              textareaRef.current.focus();
-            }
-          }, 500);
+          // Immediate focus
+          textareaRef.current.focus();
+          
+          // Backup focus attempts with delays
+          [100, 300, 500].forEach(delay => {
+            setTimeout(() => {
+              if (textareaRef.current) textareaRef.current.focus();
+            }, delay);
+          });
         }
       }
     } else {
@@ -97,6 +109,15 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
       setAllLyrics('');
     }
   }, [lyrics]);
+
+  // Listen for isPlaying changes to improve sync
+  useEffect(() => {
+    if (isPlaying && textareaRef.current && allLyrics && !hasAttemptedToFocus.current) {
+      // If video starts playing and we have lyrics, focus the text area
+      textareaRef.current.focus();
+      hasAttemptedToFocus.current = true;
+    }
+  }, [isPlaying, allLyrics]);
 
   // Debug logging - add this to help troubleshoot
   useEffect(() => {

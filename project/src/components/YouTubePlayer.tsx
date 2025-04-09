@@ -61,16 +61,33 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       if (song.lyrics && song.lyrics.length > 0) {
         // Apply lyrics immediately with no debounce delay
         console.log(`Loaded ${song.lyrics.length} lyric lines`);
-        const combinedText = song.lyrics.map(lyric => lyric.text).join(' ');
-        changeSong(song.lyrics, combinedText);
-        initialLoadRef.current = true;
+        
+        // Format lyrics better for typing practice - add proper spacing
+        const enhancedLyrics = song.lyrics.map(lyric => ({
+          ...lyric,
+          text: lyric.text.trim() // Ensure clean text
+        }));
+        
+        const combinedText = enhancedLyrics.map(lyric => lyric.text).join(' ');
+        
+        // Add a slight delay to ensure UI is ready
+        setTimeout(() => {
+          changeSong(enhancedLyrics, combinedText);
+          initialLoadRef.current = true;
+          
+          if (!isPreload) {
+            setIsLoading(false);
+          }
+          
+          // Show a toast or notification that lyrics are ready
+          console.log("Lyrics ready for typing!");
+        }, 300);
       } else {
         // Handle empty lyrics case
         setLoadError('No lyrics found for this song. Please try another.');
-      }
-      
-      if (!isPreload) {
-        setIsLoading(false);
+        if (!isPreload) {
+          setIsLoading(false);
+        }
       }
     } catch (error) {
       console.error('Error loading lyrics:', error);
@@ -269,22 +286,32 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
                   <p className="text-gray-300 mb-6 opacity-80">{songInfo.artist}</p>
                 </motion.div>
                 
-                {/* YouTube Music style lyrics display */}
+                {/* YouTube Music style lyrics display - enhanced styling */}
                 {lyrics && lyrics.length > 0 ? (
                   <div className="mt-6 text-left max-h-36 overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent px-2">
                     {lyrics.map((line, index) => {
                       const isActive = currentTime >= line.startTime && currentTime <= line.endTime;
+                      const isPast = currentTime > line.endTime;
                       return (
                         <motion.div
                           key={index}
-                          className={`py-1.5 px-3 my-1.5 rounded-lg transition-all ${
-                            isActive ? 'bg-white/20 text-white font-bold' : 'text-gray-300/80'
+                          className={`py-2 px-3 my-1.5 rounded-lg transition-all ${
+                            isActive 
+                              ? 'bg-white/20 text-white font-bold border-l-4 border-white/50' 
+                              : isPast 
+                                ? 'text-gray-300/60' 
+                                : 'text-gray-300/80'
                           }`}
                           initial={{ opacity: 0.7 }}
                           animate={{ 
-                            opacity: isActive ? 1 : 0.7,
-                            scale: isActive ? 1.02 : 1,
-                            x: isActive ? 8 : 0
+                            opacity: isActive ? 1 : isPast ? 0.6 : 0.8,
+                            scale: isActive ? 1.05 : 1,
+                            x: isActive ? 8 : 0,
+                            height: 'auto'
+                          }}
+                          transition={{
+                            duration: 0.3,
+                            ease: "easeInOut"
                           }}
                         >
                           {line.text}
@@ -343,11 +370,11 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
           
           {/* The YouTube player is still loaded but visually hidden in audio-only mode */}
           <div className={isAudioOnly ? 'opacity-0' : 'opacity-100'}>
-            <YouTube
-              videoId={videoId}
-              opts={opts}
+      <YouTube
+        videoId={videoId}
+        opts={opts}
               onReady={onReady}
-              onStateChange={onStateChange}
+        onStateChange={onStateChange}
               onError={onError}
               className="w-full h-full"
             />

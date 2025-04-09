@@ -50,18 +50,23 @@ export const demoSongs: Record<string, Song> = {
   }
 };
 
-// Placeholder lyrics for songs without predefined lyrics
+// Placeholder lyrics for songs without predefined lyrics - improved with more typing-focused content
 const placeholderLyrics = [
-  "This is a placeholder for typing practice with this song.",
-  "Type along with the beat and improve your skills.",
-  "Focus on accuracy first, then speed will follow.",
-  "Keep your fingers on the home row keys.",
-  "Maintaining proper posture helps prevent strain.",
-  "Take short breaks to rest your eyes and hands.",
-  "Practice regularly to build muscle memory.",
-  "Typing with music can help improve your rhythm.",
-  "Try to type without looking at your keyboard.",
-  "Yene Type helps you master typing while enjoying music."
+  "Welcome to Yene Type! Practice your typing skills with this song.",
+  "Focus on accuracy first, then speed will naturally follow.",
+  "Keep your fingers on the home row for better typing efficiency.",
+  "The quick brown fox jumps over the lazy dog.",
+  "Pack my box with five dozen liquor jugs.",
+  "How vexingly quick daft zebras jump!",
+  "Maintaining good posture helps prevent strain while typing.",
+  "Try to look at the screen instead of your keyboard while typing.",
+  "Regular short breaks help maintain focus and prevent fatigue.",
+  "Rhythm is important in typing, just like in music.",
+  "Practice with different songs to improve your versatility.",
+  "Challenge yourself to beat your previous typing speed record.",
+  "Watch your accuracy percentage closely as you type.",
+  "Typing to music can help you develop a consistent rhythm.",
+  "Your fingers should hover over the keyboard, not rest on it.",
 ];
 
 // Get video info from YouTube video ID

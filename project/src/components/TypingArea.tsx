@@ -218,34 +218,95 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
       );
     }
     
+    // Split lyrics into words for better visualization like 10fastfingers
+    const words = allLyrics.split(' ');
+    let charIndex = 0;
+    
     return (
       <div 
         ref={lyricsRef}
-        className="font-mono text-xl whitespace-nowrap overflow-x-hidden"
+        className="font-mono text-xl whitespace-pre-wrap overflow-x-hidden"
       >
-        {allLyrics.split('').map((char, index) => {
-          let className = isDark ? 'text-gray-500' : 'text-gray-400';
-          
-          if (index < typedText.length) {
-            // Character has been typed
-            className = typedText[index] === char 
-              ? (isDark ? 'text-[#9ece6a]' : 'text-purple-600') // Correct
-              : (isDark ? 'text-[#f7768e] bg-red-900/20' : 'text-red-600 bg-red-100'); // Wrong
-          } else if (index === typedText.length) {
-            // Current character to type (cursor position)
-            className = isDark ? 'text-white bg-[#7aa2f7]/50' : 'text-black bg-purple-200';
-          }
-          
-          return (
-            <span
-              key={index}
-              className={className}
-            >
-              {char}
-            </span>
-          );
-        })}
+        <div className="flex flex-wrap gap-2">
+          {words.map((word, wordIndex) => {
+            // Track the current word
+            const wordStart = charIndex;
+            const wordEnd = wordStart + word.length;
+            const isCurrentWord = typedText.length >= wordStart && typedText.length <= wordEnd;
+            
+            // Build the word display
+            const wordElement = (
+              <span 
+                key={wordIndex} 
+                className={`inline-block rounded px-0.5 py-0.5 ${
+                  isCurrentWord ? (isDark ? 'bg-[#414868]/30' : 'bg-purple-100/50') : ''
+                }`}
+              >
+                {word.split('').map((char, idx) => {
+                  const absoluteIndex = wordStart + idx;
+                  let className = isDark ? 'text-gray-500' : 'text-gray-400';
+                  
+                  if (absoluteIndex < typedText.length) {
+                    // Character has been typed
+                    className = typedText[absoluteIndex] === char 
+                      ? (isDark ? 'text-[#9ece6a]' : 'text-purple-600') // Correct
+                      : (isDark ? 'text-[#f7768e] bg-red-900/20' : 'text-red-600 bg-red-100'); // Wrong
+                  } else if (absoluteIndex === typedText.length) {
+                    // Current character to type (cursor position)
+                    className = isDark ? 'text-white bg-[#7aa2f7]/50' : 'text-black bg-purple-200';
+                  }
+                  
+                  return (
+                    <span key={idx} className={className}>
+                      {char}
+                    </span>
+                  );
+                })}
+              </span>
+            );
+            
+            // Update the character index
+            charIndex += word.length + 1; // +1 for the space
+            
+            // Return word + space
+            return (
+              <React.Fragment key={`word-${wordIndex}`}>
+                {wordElement}
+                {wordIndex < words.length - 1 && (
+                  <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>
+                    {' '}
+                  </span>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
       </div>
+    );
+  };
+
+  // Enhanced cursor with animation
+  const renderCursor = () => {
+    if (!allLyrics || typedText.length >= allLyrics.length) return null;
+    
+    return (
+      <motion.div 
+        className={`absolute w-[2px] h-7 ${isDark ? 'bg-[#7aa2f7]' : 'bg-purple-600'}`}
+        style={{
+          left: `calc(${typedText.length * 10}px + 0.5rem)`,
+          transform: 'translateX(-50%)',
+          bottom: '0'
+        }}
+        animate={{ 
+          opacity: [1, 0, 1],
+          height: ['28px', '24px', '28px']
+        }}
+        transition={{ 
+          repeat: Infinity, 
+          duration: 1,
+          ease: "easeInOut"
+        }}
+      />
     );
   };
 
@@ -308,7 +369,7 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
       
       <AnimatePresence>
         {showStats && (
-          <motion.div 
+        <motion.div 
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -323,7 +384,7 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
                 }`}>
                   <Keyboard className={isDark ? 'text-[#7aa2f7]' : 'text-purple-500'} size={18} />
                 </div>
-                <p className="text-2xl font-mono font-bold">{wpm}</p>
+            <p className="text-2xl font-mono font-bold">{wpm}</p>
                 <p className={`text-xs font-medium uppercase tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>WPM</p>
               </div>
               <div className={`flex flex-col items-center p-3 rounded-xl ${
@@ -359,8 +420,8 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
                 <p className="text-2xl font-mono font-bold">{streakCount}</p>
                 <p className={`text-xs font-medium uppercase tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Streak</p>
               </div>
-            </div>
-          </motion.div>
+          </div>
+        </motion.div>
         )}
       </AnimatePresence>
       
@@ -419,36 +480,40 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
           </div>
         ) : (
           <div className="flex flex-col items-center">
-            <div className="w-full overflow-hidden py-6 px-3 relative">
+            <div className="w-full overflow-hidden py-6 px-3 relative min-h-[100px]">
               {renderMonkeyTypeLyrics()}
-              
-              {/* Enhanced cursor effect */}
-              {typedText.length < allLyrics.length && (
-                <motion.div 
-                  className={`absolute bottom-0 w-[2px] h-7 ${isDark ? 'bg-[#7aa2f7]' : 'bg-purple-600'}`}
-                  style={{
-                    left: `calc(${typedText.length * 10}px + 0.5rem)`,
-                    transform: 'translateX(-50%)'
-                  }}
-                  animate={{ opacity: [1, 0, 1] }}
-                  transition={{ repeat: Infinity, duration: 1 }}
-                />
-              )}
+              {typedText.length < allLyrics.length && renderCursor()}
             </div>
 
+            {/* Enhanced stats bar with real-time feedback */}
             <div className="mt-6 w-full max-w-3xl">
+              <div className="grid grid-cols-3 gap-4 mb-4">
+                <div className={`text-center p-2 rounded-lg ${isDark ? 'bg-[#1a1b26]' : 'bg-white'}`}>
+                  <span className={`text-xs uppercase font-medium ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>Speed</span>
+                  <p className={`text-xl font-mono font-bold ${isDark ? 'text-[#7aa2f7]' : 'text-purple-600'}`}>{wpm} WPM</p>
+                </div>
+                <div className={`text-center p-2 rounded-lg ${isDark ? 'bg-[#1a1b26]' : 'bg-white'}`}>
+                  <span className={`text-xs uppercase font-medium ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>Accuracy</span>
+                  <p className={`text-xl font-mono font-bold ${isDark ? 'text-[#bb9af7]' : 'text-indigo-600'}`}>{accuracy}%</p>
+                </div>
+                <div className={`text-center p-2 rounded-lg ${isDark ? 'bg-[#1a1b26]' : 'bg-white'}`}>
+                  <span className={`text-xs uppercase font-medium ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>Progress</span>
+                  <p className={`text-xl font-mono font-bold ${isDark ? 'text-[#9ece6a]' : 'text-green-600'}`}>{allLyrics ? Math.round((typedText.length / allLyrics.length) * 100) : 0}%</p>
+                </div>
+              </div>
+              
               <div className="flex justify-between text-xs mb-2">
                 <span className={isDark ? 'text-gray-500' : 'text-gray-500'}>Progress</span>
                 <span className={`font-medium ${isDark ? 'text-[#7aa2f7]' : 'text-purple-600'}`}>
-                  {allLyrics ? Math.round((typedText.length / allLyrics.length) * 100) : 0}%
+                  {typedText.length}/{allLyrics ? allLyrics.length : 0} characters
                 </span>
               </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700/30 rounded-full h-1.5 relative overflow-hidden">
-                <motion.div
+              <div className="w-full bg-gray-200 dark:bg-gray-700/30 rounded-full h-2 relative overflow-hidden">
+                <motion.div 
                   initial={{ width: 0 }}
                   animate={{ width: `${allLyrics ? (typedText.length / allLyrics.length) * 100 : 0}%` }}
                   transition={{ duration: 0.2 }}
-                  className={`h-1.5 rounded-full ${isDark ? 'bg-gradient-to-r from-[#7aa2f7] to-[#bb9af7]' : 'bg-gradient-to-r from-purple-600 to-indigo-500'}`}
+                  className={`h-2 rounded-full ${isDark ? 'bg-gradient-to-r from-[#7aa2f7] to-[#bb9af7]' : 'bg-gradient-to-r from-purple-600 to-indigo-500'}`}
                 ></motion.div>
               </div>
             </div>

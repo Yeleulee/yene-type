@@ -83,15 +83,15 @@ function App() {
                 onMouseEnter={() => setShowTooltip(true)}
                 onMouseLeave={() => setShowTooltip(false)}
               >
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => {
-                    const levels: ('easy' | 'medium' | 'hard')[] = ['easy', 'medium', 'hard'];
-                    const currentIndex = levels.indexOf(difficulty);
-                    const nextIndex = (currentIndex + 1) % levels.length;
-                    setDifficulty(levels[nextIndex]);
-                  }}
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => {
+                  const levels: ('easy' | 'medium' | 'hard')[] = ['easy', 'medium', 'hard'];
+                  const currentIndex = levels.indexOf(difficulty);
+                  const nextIndex = (currentIndex + 1) % levels.length;
+                  setDifficulty(levels[nextIndex]);
+                }}
                   className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
                     isDark 
                       ? 'bg-[#1a1b26] hover:bg-[#414868]' 
@@ -282,14 +282,14 @@ function App() {
                 {highScores.length > 0 ? (
                   highScores.map((score, index) => (
                     <motion.div
-                      key={index}
+                    key={index}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05 }}
                       className={`flex items-center p-4 rounded-lg ${
-                        isDark ? 'bg-[#1a1b26]' : 'bg-gray-50'
-                      }`}
-                    >
+                      isDark ? 'bg-[#1a1b26]' : 'bg-gray-50'
+                    }`}
+                  >
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 ${
                         isDark ? 'bg-[#414868]' : 'bg-purple-100'
                       }`}>
@@ -312,16 +312,16 @@ function App() {
                           </p>
                           <p className="font-mono font-bold">
                             {score.wpm} <span className="text-xs">WPM</span>
-                          </p>
-                        </div>
+                      </p>
+                    </div>
                         <div className="flex justify-between items-center mt-1">
                           <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                             {new Date(score.date).toLocaleDateString()}
                           </p>
                           <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                             {score.accuracy}% accuracy
-                          </p>
-                        </div>
+                      </p>
+                    </div>
                       </div>
                     </motion.div>
                   ))
@@ -340,7 +340,7 @@ function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-6">
-        <motion.div 
+          <motion.div
           variants={containerVariants}
           initial="hidden"
           animate="visible"

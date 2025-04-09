@@ -25,58 +25,33 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
   const timerRef = useRef<number | null>(null);
   const previousVideoId = useRef<string | null>(null);
   const changeSongTimeoutRef = useRef<any>(null);
+  const syncAttemptsRef = useRef(0);
+  const initialLoadRef = useRef(false);
 
-  // Reset loading state when video ID changes
+  // Reset loading state and preload lyrics when video ID changes
   useEffect(() => {
     if (previousVideoId.current !== videoId) {
       setIsLoading(true);
       setLoadError(null);
+      syncAttemptsRef.current = 0;
+      initialLoadRef.current = false;
+      
+      // Preload lyrics immediately when videoId changes
+      console.log("New video ID detected, preloading lyrics");
+      loadLyrics(videoId, true);
     }
   }, [videoId]);
-
-  // Safe wrapper for changeSong with debounce
-  const safeChangeSong = (lyrics: any[], text: string) => {
-    // Clear any existing timeout
-    if (changeSongTimeoutRef.current) {
-      clearTimeout(changeSongTimeoutRef.current);
-    }
-    
-    // Set a small delay to ensure state consistency
-    changeSongTimeoutRef.current = setTimeout(() => {
-      console.log('Calling changeSong with lyrics length:', lyrics.length);
-      changeSong(lyrics, text);
-    }, 100);
-  };
-
-  const onReady = (event: { target: Player }) => {
-    setPlayer(event.target);
-    setDuration(event.target.getDuration());
-    
-    // Update time more frequently for better responsiveness - reduce interval to 50ms for tighter sync
-    if (timerRef.current) {
-      window.clearInterval(timerRef.current);
-    }
-    timerRef.current = window.setInterval(() => {
-      const currentTime = event.target.getCurrentTime();
-      setCurrentTime(currentTime);
-      
-      // Check if player is actually playing (some browsers might pause without events)
-      const playerState = event.target.getPlayerState();
-      setIsPlaying(playerState === 1);
-      
-      // Force lyrics re-sync if player is playing but we don't have lyrics yet
-      if (playerState === 1 && !loadError && lyrics && lyrics.length === 0) {
-        console.log("Force reloading lyrics due to sync issue");
-        loadLyrics(videoId);
-      }
-    }, 50); // Reduced from 100ms to 50ms for better sync
-  };
   
-  // Extract loadLyrics function to be reusable
-  const loadLyrics = async (videoId: string) => {
+  // The loadLyrics function with improved error handling and retry capability
+  const loadLyrics = async (videoId: string, isPreload = false) => {
     try {
-      setIsLoading(true);
+      if (!isPreload) {
+        setIsLoading(true);
+      }
+      
+      console.log(`Loading lyrics for video ${videoId}${isPreload ? ' (preload)' : ''}`);
       const song = await fetchLyrics(videoId);
+      
       setSongInfo({
         title: song.title,
         artist: song.artist
@@ -84,54 +59,80 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       
       // Ensure we have valid lyrics before proceeding
       if (song.lyrics && song.lyrics.length > 0) {
-        // Load the combined lyrics text for typing using the new changeSong method with NO debounce
-        // The debounce is causing sync issues, we want immediate lyrics loading
+        // Apply lyrics immediately with no debounce delay
+        console.log(`Loaded ${song.lyrics.length} lyric lines`);
         const combinedText = song.lyrics.map(lyric => lyric.text).join(' ');
         changeSong(song.lyrics, combinedText);
+        initialLoadRef.current = true;
       } else {
         // Handle empty lyrics case
         setLoadError('No lyrics found for this song. Please try another.');
       }
-      setIsLoading(false);
+      
+      if (!isPreload) {
+        setIsLoading(false);
+      }
     } catch (error) {
       console.error('Error loading lyrics:', error);
       setLoadError('Failed to load lyrics. Please try again or select another song.');
-      setIsLoading(false);
+      
+      // Retry once after error if it's not already a retry attempt
+      if (syncAttemptsRef.current < 2) {
+        console.log(`Retrying lyrics load after error (attempt ${syncAttemptsRef.current + 1})`);
+        setTimeout(() => loadLyrics(videoId), 2000);
+        syncAttemptsRef.current++;
+      }
+      
+      if (!isPreload) {
+        setIsLoading(false);
+      }
     }
   };
 
-  useEffect(() => {
-    // Check if the video ID has changed
-    if (previousVideoId.current !== videoId) {
-      previousVideoId.current = videoId;
-      loadLyrics(videoId);
+  const onReady = (event: { target: Player }) => {
+    console.log("YouTube player ready");
+    setPlayer(event.target);
+    setDuration(event.target.getDuration());
+    
+    // Apply optimal settings for fast playback
+    try {
+      // Try lowering quality first for faster loading
+      event.target.setPlaybackQuality('medium');
+      
+      // If player is ready but lyrics haven't loaded yet, force a reload
+      if ((!lyrics || lyrics.length === 0) && !initialLoadRef.current) {
+        console.log("Player ready but no lyrics - forcing lyrics load");
+        loadLyrics(videoId);
+      }
+    } catch (e) {
+      console.warn("Error setting initial player state:", e);
     }
-
-    return () => {
-      if (timerRef.current) {
-        window.clearInterval(timerRef.current);
+    
+    // Update time frequently for better responsiveness - 40ms for smoother updates
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+    }
+    
+    timerRef.current = window.setInterval(() => {
+      try {
+        const currentTime = event.target.getCurrentTime();
+        setCurrentTime(currentTime);
+        
+        // Check if player is actually playing
+        const playerState = event.target.getPlayerState();
+        const isCurrentlyPlaying = playerState === 1;
+        setIsPlaying(isCurrentlyPlaying);
+        
+        // If video is playing but we don't have lyrics yet AND we've not exceeded retry attempts
+        if (isCurrentlyPlaying && (!lyrics || lyrics.length === 0) && syncAttemptsRef.current < 3) {
+          console.log(`Force reloading lyrics - sync attempt ${syncAttemptsRef.current + 1}`);
+          loadLyrics(videoId);
+          syncAttemptsRef.current++;
+        }
+      } catch (e) {
+        console.warn("Error in player timer update:", e);
       }
-      if (changeSongTimeoutRef.current) {
-        clearTimeout(changeSongTimeoutRef.current);
-      }
-    };
-  }, [videoId, changeSong]);
-
-  const opts = {
-    height: '100%',
-    width: '100%',
-    playerVars: {
-      autoplay: 1,
-      controls: 1,
-      modestbranding: 1,
-      rel: 0,
-      // Add playsinline for better mobile performance
-      playsinline: 1,
-      // Improve performance with fewer related videos
-      iv_load_policy: 3,
-      // Disable annotations for better performance
-      annotations: 0
-    },
+    }, 40); // Reduced for smoother updates
   };
 
   const onStateChange = (event: any) => {
@@ -145,10 +146,11 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       const currentTime = event.target.getCurrentTime();
       setCurrentTime(currentTime);
       
-      // If we have a player but no lyrics yet, try to reload lyrics
-      if (lyrics.length === 0 && !loadError) {
-        console.log("Video started playing but no lyrics - reloading lyrics");
+      // When playback starts but we still don't have lyrics
+      if ((!lyrics || lyrics.length === 0) && syncAttemptsRef.current < 3) {
+        console.log(`Video playing but no lyrics - loading attempt ${syncAttemptsRef.current + 1}`);
         loadLyrics(videoId);
+        syncAttemptsRef.current++;
       }
     }
     
@@ -164,18 +166,45 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
     setIsLoading(false);
   };
   
-  // Preload optimization - once the player is available, set playback quality
+  // Main effect for video ID changes and cleanup
   useEffect(() => {
-    if (player) {
-      // Set a lower quality to improve performance if needed
-      // Options: small, medium, large, hd720, hd1080, highres
-      try {
-        player.setPlaybackQuality('medium');
-      } catch (e) {
-        console.warn("Could not set playback quality", e);
-      }
+    // Check if the video ID has changed
+    if (previousVideoId.current !== videoId) {
+      previousVideoId.current = videoId;
     }
-  }, [player]);
+
+    return () => {
+      if (timerRef.current) {
+        window.clearInterval(timerRef.current);
+      }
+      if (changeSongTimeoutRef.current) {
+        clearTimeout(changeSongTimeoutRef.current);
+      }
+    };
+  }, [videoId, changeSong]);
+  
+  // Improve player options for faster loading and better performance
+  const opts = {
+    height: '100%',
+    width: '100%',
+    playerVars: {
+      autoplay: 1,
+      controls: 1,
+      modestbranding: 1,
+      rel: 0,
+      playsinline: 1,
+      // Start with lower quality for faster initial load
+      vq: 'medium',
+      // Disable keyboard controls to prevent interference with typing
+      disablekb: 1,
+      // Improve performance with fewer related videos
+      iv_load_policy: 3,
+      // Disable annotations for better performance
+      annotations: 0,
+      // Preload for faster start
+      fs: 0
+    },
+  };
 
   return (
     <div className="space-y-4">
@@ -218,39 +247,64 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
           {/* Conditionally style based on audio-only mode */}
           {isAudioOnly && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-gradient-to-r from-purple-900 via-pink-800 to-indigo-900">
-              <div className="text-center text-white">
+              <div className="text-center text-white w-full max-w-2xl px-4">
                 <motion.div
                   initial={{ scale: 0.9, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  className="mb-3"
+                  className="mb-2"
                 >
-                  <Music className="w-12 h-12 mx-auto mb-3" />
+                  <Music className="w-10 h-10 mx-auto mb-2" />
                   <h3 className="text-xl font-bold">{songInfo.title}</h3>
-                  <p className="text-gray-300">{songInfo.artist}</p>
+                  <p className="text-gray-300 mb-6">{songInfo.artist}</p>
                 </motion.div>
                 
-                {/* Audio visualizer bars (animated) */}
-                <div className="flex items-end justify-center h-8 gap-1 mt-4">
-                  {[...Array(16)].map((_, i) => (
-                    <motion.div
-                      key={i}
-                      className="w-1 bg-white bg-opacity-80 rounded-full"
-                      animate={{
-                        height: [
-                          Math.random() * 12 + 5,
-                          Math.random() * 30 + 5,
-                          Math.random() * 12 + 5
-                        ]
-                      }}
-                      transition={{
-                        duration: 1.5,
-                        repeat: Infinity,
-                        repeatType: "reverse",
-                        delay: i * 0.05
-                      }}
-                    />
-                  ))}
-                </div>
+                {/* YouTube Music style lyrics display */}
+                {lyrics && lyrics.length > 0 ? (
+                  <div className="mt-4 text-left max-h-28 overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
+                    {lyrics.map((line, index) => {
+                      const isActive = currentTime >= line.startTime && currentTime <= line.endTime;
+                      return (
+                        <motion.div
+                          key={index}
+                          className={`py-1 px-2 my-1 rounded transition-all ${
+                            isActive ? 'bg-white/20 text-white font-bold' : 'text-gray-300'
+                          }`}
+                          initial={{ opacity: 0.7 }}
+                          animate={{ 
+                            opacity: isActive ? 1 : 0.7,
+                            scale: isActive ? 1.02 : 1,
+                            x: isActive ? 8 : 0
+                          }}
+                        >
+                          {line.text}
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  // Audio visualizer bars (animated) as fallback when no lyrics
+                  <div className="flex items-end justify-center h-8 gap-1 mt-4">
+                    {[...Array(16)].map((_, i) => (
+                      <motion.div
+                        key={i}
+                        className="w-1 bg-white bg-opacity-80 rounded-full"
+                        animate={{
+                          height: [
+                            Math.random() * 12 + 5,
+                            Math.random() * 30 + 5,
+                            Math.random() * 12 + 5
+                          ]
+                        }}
+                        transition={{
+                          duration: 1.5,
+                          repeat: Infinity,
+                          repeatType: "reverse",
+                          delay: i * 0.05
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}

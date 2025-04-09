@@ -49,31 +49,35 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
       setStartTime(null);
       setIsComplete(false);
       setErrors(0);
+      hasAttemptedToFocus.current = false;
       
       // Reset scroll position
       if (lyricsRef.current) {
         lyricsRef.current.scrollLeft = 0;
       }
       
-      // Re-focus the textarea when new lyrics are loaded - immediately try to focus
-      if (textareaRef.current) {
-        // Immediate focus attempt
-        textareaRef.current.focus();
-        
-        // Backup focus attempts with increasing delays
-        setTimeout(() => {
-          if (textareaRef.current) textareaRef.current.focus();
-        }, 100);
-        
-        setTimeout(() => {
-          if (textareaRef.current) {
-            textareaRef.current.focus();
-            hasAttemptedToFocus.current = true;
-          }
-        }, 500);
-      }
+      // Aggressive focus attempts when new text is loaded
+      focusTextArea();
     }
   }, [text]);
+  
+  // Extract focus logic to a reusable function for cleaner code
+  const focusTextArea = () => {
+    if (!textareaRef.current) return;
+    
+    // Immediate focus attempt
+    textareaRef.current.focus();
+    
+    // Multiple focus attempts with escalating delays to ensure we catch the right moment
+    [50, 100, 200, 500, 1000, 2000].forEach(delay => {
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          if (delay >= 500) hasAttemptedToFocus.current = true;
+        }
+      }, delay);
+    });
+  };
 
   // When lyrics change, combine all lyrics into one continuous text
   useEffect(() => {
@@ -91,18 +95,8 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
         setIsComplete(false);
         hasAttemptedToFocus.current = false;
         
-        // Force focus on text area with multiple attempts
-        if (textareaRef.current) {
-          // Immediate focus
-          textareaRef.current.focus();
-          
-          // Backup focus attempts with delays
-          [100, 300, 500].forEach(delay => {
-            setTimeout(() => {
-              if (textareaRef.current) textareaRef.current.focus();
-            }, delay);
-          });
-        }
+        // Focus on text area with our enhanced focus function
+        focusTextArea();
       }
     } else {
       // Reset if no lyrics available
@@ -112,12 +106,26 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
 
   // Listen for isPlaying changes to improve sync
   useEffect(() => {
-    if (isPlaying && textareaRef.current && allLyrics && !hasAttemptedToFocus.current) {
-      // If video starts playing and we have lyrics, focus the text area
-      textareaRef.current.focus();
-      hasAttemptedToFocus.current = true;
+    // When music starts playing, make sure typing area is focused
+    if (isPlaying && allLyrics && !hasAttemptedToFocus.current) {
+      console.log("Music started playing - focusing typing area");
+      focusTextArea();
     }
   }, [isPlaying, allLyrics]);
+  
+  // Handle clicks anywhere in the component to focus the textarea
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      if (allLyrics && !isComplete && textareaRef.current) {
+        textareaRef.current.focus();
+      }
+    };
+    
+    document.addEventListener('click', handleGlobalClick);
+    return () => {
+      document.removeEventListener('click', handleGlobalClick);
+    };
+  }, [allLyrics, isComplete]);
 
   // Debug logging - add this to help troubleshoot
   useEffect(() => {

@@ -1,8 +1,19 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { calculateWPM, calculateAccuracy } from '../lib/utils';
 import { useTypingStore } from '../store/typingStore';
-import { Music, Headphones, Mic, Keyboard, Award, ChevronDown, Rocket, RefreshCw, AlertTriangle } from 'lucide-react';
+import { 
+  Keyboard, 
+  Award, 
+  Clock, 
+  BarChart, 
+  Zap, 
+  ChevronDown, 
+  RefreshCw, 
+  AlertTriangle, 
+  Check,
+  BookOpen
+} from 'lucide-react';
 
 interface TypingAreaProps {
   isDark?: boolean;
@@ -37,10 +48,18 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lyricsRef = useRef<HTMLDivElement>(null);
   const hasAttemptedToFocus = useRef(false);
-
-  // Add a synchronization reference 
+  const focusTimeoutRefs = useRef<number[]>([]);
   const syncStatusRef = useRef<'pending' | 'synced' | 'failed'>('pending');
   const syncAttemptTimeRef = useRef<number | null>(null);
+
+  // Clear all timeouts on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      focusTimeoutRefs.current.forEach(timeoutId => {
+        clearTimeout(timeoutId);
+      });
+    };
+  }, []);
 
   // Reset everything when text changes (meaning a new song was selected)
   useEffect(() => {
@@ -53,18 +72,17 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
       setStartTime(null);
       setIsComplete(false);
       setErrors(0);
-      hasAttemptedToFocus.current = false;
       
       // Reset scroll position
       if (lyricsRef.current) {
         lyricsRef.current.scrollLeft = 0;
       }
       
-      // Aggressive focus attempts when new text is loaded
+      // Re-focus the textarea when new lyrics are loaded
       focusTextArea();
     }
   }, [text]);
-  
+
   // More aggressive sync and focus handling
   useEffect(() => {
     // If music is playing but text isn't ready after a delay, try a forced sync
@@ -82,7 +100,7 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
         // It's been more than 2 seconds and still no lyrics - try a direct reset approach
         console.log("Force sync: No lyrics after 2 seconds of playback - attempting recovery");
         
-        // Trigger the reset action in the typing store which should propagate to other components
+        // Trigger the reset action in the typing store
         reset();
         syncStatusRef.current = 'failed';
         
@@ -98,10 +116,41 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
     }
   }, [isPlaying, allLyrics, reset]);
 
-  // Improve the useEffect that processes lyrics changes to ensure it works with any song
-  // When lyrics change, combine all lyrics into one continuous text - optimized for immediate response
+  // Enhanced focus mechanism with debounce to prevent excessive focus attempts
+  const focusTextArea = useCallback(() => {
+    if (!textareaRef.current) {
+      console.log("Focus attempt failed - no textarea ref");
+      return;
+    }
+    
+    // Clear any existing focus timeouts
+    focusTimeoutRefs.current.forEach(timeoutId => {
+      clearTimeout(timeoutId);
+    });
+    focusTimeoutRefs.current = [];
+    
+    // Immediate focus attempt
+    textareaRef.current.focus();
+    console.log("Focus attempt on typing area");
+    
+    // Scheduled focus attempts with increasing delays
+    const delays = [100, 500, 1000];
+    
+    delays.forEach(delay => {
+      const timeoutId = window.setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          hasAttemptedToFocus.current = true;
+        }
+      }, delay);
+      
+      focusTimeoutRefs.current.push(timeoutId);
+    });
+  }, []);
+
+  // When lyrics change, combine all lyrics into one continuous text
   useEffect(() => {
-    // Immediate check for lyrics presence - with better debugging
+    // Immediate check for lyrics presence
     if (!lyrics || lyrics.length === 0) {
       console.log("No lyrics available yet - resetting typing area");
       setAllLyrics('');
@@ -109,96 +158,30 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
       return;
     }
     
-    // Join all lyrics with a space between each line - with trimming for cleaner text
+    // Join all lyrics with a space between each line
     const combinedLyrics = lyrics.map(lyric => lyric.text.trim()).join(' ');
     
-    // Log lyrics info to help with debugging
     console.log(`Lyrics received: ${lyrics.length} lines, ${combinedLyrics.length} characters`);
     
-    // Always force update immediately for faster response, especially for new songs
-    // Reset state for new lyrics
+    // Always force update immediately
     setAllLyrics(combinedLyrics);
     setCurrentPosition(0);
     setTypedText('');
     setStartTime(null);
     setIsComplete(false);
     hasAttemptedToFocus.current = false;
-    syncStatusRef.current = 'synced'; // Mark as synced since we got new lyrics
+    syncStatusRef.current = 'synced';
     
-    // Force focus on text area multiple times
+    // Force focus on text area
     focusTextArea();
     
     // Force scroll to start position
     if (lyricsRef.current) {
       lyricsRef.current.scrollLeft = 0;
     }
-    
-    // Schedule multiple focus attempts over time for better mobile experience
-    [100, 500, 1000, 2000].forEach(delay => {
-      setTimeout(() => {
-        focusTextArea();
-      }, delay);
-    });
-  }, [lyrics]);
+  }, [lyrics, focusTextArea]);
 
-  // Enhanced focus mechanism with more aggressive approach
-  const focusTextArea = () => {
-    if (!textareaRef.current) {
-      console.log("Focus attempt failed - no textarea ref");
-      return;
-    }
-    
-    // Immediate focus attempt
-    textareaRef.current.focus();
-    console.log("Focus attempt on typing area");
-    
-    // Multiple focus attempts with shorter delays for better response
-    [10, 50, 100, 200].forEach(delay => {
-      setTimeout(() => {
-        if (textareaRef.current) {
-          // Add blur first to force iOS/mobile to recognize the focus
-          textareaRef.current.blur();
-          setTimeout(() => {
-            if (textareaRef.current) {
-              textareaRef.current.focus();
-              hasAttemptedToFocus.current = true;
-            }
-          }, 5);
-        }
-      }, delay);
-    });
-  };
-
-  // Listen for isPlaying changes to improve sync
-  useEffect(() => {
-    // When music starts playing, make sure typing area is focused
-    if (isPlaying && allLyrics && !hasAttemptedToFocus.current) {
-      console.log("Music started playing - focusing typing area");
-      focusTextArea();
-    }
-  }, [isPlaying, allLyrics]);
-  
-  // Handle clicks anywhere in the component to focus the textarea
-  useEffect(() => {
-    const handleGlobalClick = () => {
-      if (allLyrics && !isComplete && textareaRef.current) {
-        textareaRef.current.focus();
-      }
-    };
-    
-    document.addEventListener('click', handleGlobalClick);
-    return () => {
-      document.removeEventListener('click', handleGlobalClick);
-    };
-  }, [allLyrics, isComplete]);
-
-  // Debug logging - add this to help troubleshoot
-  useEffect(() => {
-    console.log("Text from store:", text);
-    console.log("All lyrics state:", allLyrics);
-    console.log("Lyrics array:", lyrics);
-  }, [text, allLyrics, lyrics]);
-
+  // Handle typing stats calculations
   useEffect(() => {
     if (typedText.length === 1 && !startTime) {
       setStartTime(Date.now());
@@ -216,8 +199,8 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
       setWPM(newWPM);
       setAccuracy(newAccuracy);
 
-      // Check if typing is complete
-      if (typedText.length >= allLyrics.length) {
+      // Check if typing is complete - but only if not already marked complete
+      if (typedText.length >= allLyrics.length && !isComplete) {
         setIsComplete(true);
         addHighScore({
           wpm: newWPM,
@@ -227,7 +210,7 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
         });
       }
     }
-  }, [typedText, errors, startTime, allLyrics]);
+  }, [typedText, errors, startTime, allLyrics, addHighScore, isComplete, setAccuracy, setWPM]);
 
   // Enhanced typing handler with better performance
   const handleTyping = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -259,52 +242,23 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
 
     // Optimized auto-scroll with smoother scrolling
     if (lyricsRef.current) {
-      const textWidth = 10; // Approximate width of a character in pixels
+      // Calculate dynamic character width based on container width and visible content
       const containerWidth = lyricsRef.current.offsetWidth;
-      const charsVisible = Math.floor(containerWidth / textWidth);
-      const scrollPosition = Math.max(0, newTypedText.length - charsVisible / 3); // More context ahead
+      const avgCharWidth = Math.max(8, Math.min(12, containerWidth / 60)); // Adaptive width between 8-12px
       
-      // Use smooth scrolling for better UX
+      const charsVisible = Math.floor(containerWidth / avgCharWidth);
+      const scrollPosition = Math.max(0, newTypedText.length - charsVisible / 3);
+      
       lyricsRef.current.scrollTo({
-        left: scrollPosition * textWidth,
+        left: scrollPosition * avgCharWidth,
         behavior: 'smooth'
-      });
-    }
-    
-    // Start timer on first character
-    if (newTypedText.length === 1 && !startTime) {
-      setStartTime(Date.now());
-      setIsComplete(false);
-    }
-    
-    // Check completion
-    if (newTypedText.length >= allLyrics.length && !isComplete) {
-      setIsComplete(true);
-      
-      // Calculate final stats
-      const timeElapsed = (Date.now() - (startTime || Date.now())) / 1000;
-      const finalWPM = calculateWPM(newTypedText.length, timeElapsed, newErrors);
-      const finalAccuracy = calculateAccuracy(
-        newTypedText.length - newErrors,
-        newTypedText.length
-      );
-      
-      // Set final stats and add high score
-      setWPM(finalWPM);
-      setAccuracy(finalAccuracy);
-      
-      addHighScore({
-        wpm: finalWPM,
-        accuracy: finalAccuracy,
-        mode: 'lyrics',
-        songTitle: allLyrics.substring(0, 20) + '...'
       });
     }
   };
 
   const handleFocus = () => {
-    if (textareaRef.current) {
-      textareaRef.current.focus();
+    if (allLyrics && !isComplete) {
+      focusTextArea();
     }
   };
 
@@ -317,9 +271,11 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
     if (lyricsRef.current) {
       lyricsRef.current.scrollLeft = 0;
     }
+    focusTextArea();
   };
 
-  const renderMonkeyTypeLyrics = () => {
+  // Memory-efficient word-by-word rendering approach
+  const renderTypingText = () => {
     if (!allLyrics || allLyrics.length === 0) {
       return (
         <div className="font-mono text-xl text-center py-4">
@@ -330,132 +286,113 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
       );
     }
     
-    // Split lyrics into words for better visualization like 10fastfingers
+    // Split lyrics into words for better visualization
     const words = allLyrics.split(' ');
-    let charIndex = 0;
+    const wordElements = [];
+    let currentCharIndex = 0;
+    
+    // Process words in chunks for better performance with long texts
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
+      const wordStart = currentCharIndex;
+      const wordEnd = wordStart + word.length;
+      const isCurrentWord = typedText.length >= wordStart && typedText.length <= wordEnd;
+      
+      const charElements = [];
+      for (let j = 0; j < word.length; j++) {
+        const char = word[j];
+        const absoluteIndex = wordStart + j;
+        let className = isDark ? 'text-gray-500' : 'text-gray-400';
+        
+        if (absoluteIndex < typedText.length) {
+          // Character has been typed
+          className = typedText[absoluteIndex] === char 
+            ? (isDark ? 'text-emerald-400' : 'text-teal-600') // Correct
+            : (isDark ? 'text-rose-400 bg-rose-900/20' : 'text-rose-600 bg-rose-100'); // Wrong
+        } else if (absoluteIndex === typedText.length) {
+          // Current character to type (cursor position)
+          className = isDark ? 'text-white bg-indigo-500/50' : 'text-black bg-indigo-200';
+        }
+        
+        charElements.push(
+          <span key={`char-${absoluteIndex}`} className={className}>
+            {char}
+          </span>
+        );
+      }
+      
+      wordElements.push(
+        <span 
+          key={`word-${i}`} 
+          className={`inline-block rounded px-0.5 py-0.5 ${
+            isCurrentWord ? (isDark ? 'bg-indigo-500/20' : 'bg-indigo-100/70') : ''
+          }`}
+        >
+          {charElements}
+        </span>
+      );
+      
+      // Add space between words
+      if (i < words.length - 1) {
+        currentCharIndex += word.length + 1; // +1 for the space
+        wordElements.push(
+          <span key={`space-${i}`} className={isDark ? 'text-gray-600' : 'text-gray-400'}>
+            {' '}
+          </span>
+        );
+      } else {
+        currentCharIndex += word.length;
+      }
+    }
     
     return (
       <div 
         ref={lyricsRef}
-        className="font-mono text-xl whitespace-pre-wrap overflow-x-hidden"
+        className="font-mono text-xl whitespace-pre-wrap overflow-x-auto py-3 px-2 rounded-lg"
       >
-        <div className="flex flex-wrap gap-2">
-          {words.map((word, wordIndex) => {
-            // Track the current word
-            const wordStart = charIndex;
-            const wordEnd = wordStart + word.length;
-            const isCurrentWord = typedText.length >= wordStart && typedText.length <= wordEnd;
-            
-            // Build the word display
-            const wordElement = (
-              <span 
-                key={wordIndex} 
-                className={`inline-block rounded px-0.5 py-0.5 ${
-                  isCurrentWord ? (isDark ? 'bg-[#414868]/30' : 'bg-purple-100/50') : ''
-                }`}
-              >
-                {word.split('').map((char, idx) => {
-                  const absoluteIndex = wordStart + idx;
-                  let className = isDark ? 'text-gray-500' : 'text-gray-400';
-                  
-                  if (absoluteIndex < typedText.length) {
-                    // Character has been typed
-                    className = typedText[absoluteIndex] === char 
-                      ? (isDark ? 'text-[#9ece6a]' : 'text-purple-600') // Correct
-                      : (isDark ? 'text-[#f7768e] bg-red-900/20' : 'text-red-600 bg-red-100'); // Wrong
-                  } else if (absoluteIndex === typedText.length) {
-                    // Current character to type (cursor position)
-                    className = isDark ? 'text-white bg-[#7aa2f7]/50' : 'text-black bg-purple-200';
-                  }
-                  
-                  return (
-                    <span key={idx} className={className}>
-                      {char}
-                    </span>
-                  );
-                })}
-              </span>
-            );
-            
-            // Update the character index
-            charIndex += word.length + 1; // +1 for the space
-            
-            // Return word + space
-            return (
-              <React.Fragment key={`word-${wordIndex}`}>
-                {wordElement}
-                {wordIndex < words.length - 1 && (
-                  <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>
-                    {' '}
-                  </span>
-                )}
-              </React.Fragment>
-            );
-          })}
-        </div>
+        {wordElements}
       </div>
-    );
-  };
-
-  // Enhanced cursor with animation
-  const renderCursor = () => {
-    if (!allLyrics || typedText.length >= allLyrics.length) return null;
-    
-    return (
-      <motion.div 
-        className={`absolute w-[2px] h-7 ${isDark ? 'bg-[#7aa2f7]' : 'bg-purple-600'}`}
-        style={{
-          left: `calc(${typedText.length * 10}px + 0.5rem)`,
-          transform: 'translateX(-50%)',
-          bottom: '0'
-        }}
-        animate={{ 
-          opacity: [1, 0, 1],
-          height: ['28px', '24px', '28px']
-        }}
-        transition={{ 
-          repeat: Infinity, 
-          duration: 1,
-          ease: "easeInOut"
-        }}
-      />
     );
   };
 
   return (
     <motion.div 
-      className={`w-full h-full flex flex-col gap-4 p-6 rounded-xl cursor-text transition-all ${
-        isDark ? 'bg-[#1E1E2E] shadow-lg shadow-[#1a1b26]/50' : 'bg-white/90 backdrop-blur-sm shadow-xl shadow-purple-500/10'
+      className={`w-full h-full flex flex-col gap-4 rounded-xl cursor-text transition-all ${
+        isDark 
+          ? 'bg-slate-900 shadow-lg shadow-indigo-900/30' 
+          : 'bg-white shadow-xl shadow-indigo-200/60'
       }`}
       onClick={handleFocus}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.2 }}
     >
-      <div className="flex items-center justify-between mb-4">
+      {/* Header */}
+      <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className={`text-xl font-extrabold bg-clip-text ${
-            isDark 
-              ? 'text-transparent bg-gradient-to-r from-[#7aa2f7] to-[#bb9af7]' 
-              : 'text-transparent bg-gradient-to-r from-purple-600 to-indigo-600'
+          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+            isDark ? 'bg-indigo-500/20' : 'bg-indigo-100'
           }`}>
-            Yene Type
-          </span>
-          <span className={`px-2 py-0.5 text-xs rounded-full ${
-            isDark ? 'bg-[#414868] text-[#c0caf5]' : 'bg-purple-100 text-purple-800'
-          }`}>
-            v1.0
-          </span>
+            <Keyboard className={`w-5 h-5 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} />
+          </div>
+          <div>
+            <h3 className={`font-bold text-lg ${isDark ? 'text-white' : 'text-slate-800'}`}>
+              Typing Practice
+            </h3>
+            <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              Type along with music to improve your skills
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <motion.button 
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleReset}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-sm ${
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium ${
               isDark 
-                ? 'bg-[#1a1b26] hover:bg-[#414868] text-[#c0caf5]' 
-                : 'bg-purple-50 hover:bg-purple-100 text-purple-700'
+                ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' 
+                : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700'
             }`}
             title="Reset typing test"
           >
@@ -467,236 +404,234 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setShowStats(!showStats)}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-sm ${
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium ${
               isDark 
-                ? 'bg-[#1a1b26] hover:bg-[#414868] text-[#c0caf5]'
-                : 'bg-purple-50 hover:bg-purple-100 text-purple-700'
+                ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' 
+                : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700'
             }`}
           >
-            Stats
-            <ChevronDown className="w-4 h-4" />
+            <BarChart className="w-3.5 h-3.5" />
+            <span>Stats</span>
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showStats ? 'rotate-180' : ''}`} />
           </motion.button>
-        </div>
-      </div>
-      
-      <AnimatePresence>
-        {showStats && (
-        <motion.div 
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="grid grid-cols-4 gap-3 mb-5">
-              <div className={`flex flex-col items-center p-3 rounded-xl ${
-                isDark ? 'bg-[#1a1b26]' : 'bg-purple-50/80'
-              }`}>
-                <div className={`w-9 h-9 flex items-center justify-center rounded-lg mb-2 ${
-                  isDark ? 'bg-[#414868]' : 'bg-white'
-                }`}>
-                  <Keyboard className={isDark ? 'text-[#7aa2f7]' : 'text-purple-500'} size={18} />
-                </div>
-            <p className="text-2xl font-mono font-bold">{wpm}</p>
-                <p className={`text-xs font-medium uppercase tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>WPM</p>
-              </div>
-              <div className={`flex flex-col items-center p-3 rounded-xl ${
-                isDark ? 'bg-[#1a1b26]' : 'bg-purple-50/80'
-              }`}>
-                <div className={`w-9 h-9 flex items-center justify-center rounded-lg mb-2 ${
-                  isDark ? 'bg-[#414868]' : 'bg-white'
-                }`}>
-                  <Mic className={isDark ? 'text-[#bb9af7]' : 'text-purple-500'} size={18} />
-                </div>
-                <p className="text-2xl font-mono font-bold">{accuracy}%</p>
-                <p className={`text-xs font-medium uppercase tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Accuracy</p>
-              </div>
-              <div className={`flex flex-col items-center p-3 rounded-xl ${
-                isDark ? 'bg-[#1a1b26]' : 'bg-purple-50/80'
-              }`}>
-                <div className={`w-9 h-9 flex items-center justify-center rounded-lg mb-2 ${
-                  isDark ? 'bg-[#414868]' : 'bg-white'
-                }`}>
-                  <Headphones className={isDark ? 'text-[#7dcfff]' : 'text-purple-500'} size={18} />
-                </div>
-                <p className="text-2xl font-mono font-bold">{errors}</p>
-                <p className={`text-xs font-medium uppercase tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Errors</p>
-              </div>
-              <div className={`flex flex-col items-center p-3 rounded-xl ${
-                isDark ? 'bg-[#1a1b26]' : 'bg-purple-50/80'
-              }`}>
-                <div className={`w-9 h-9 flex items-center justify-center rounded-lg mb-2 ${
-                  isDark ? 'bg-[#414868]' : 'bg-white'
-                }`}>
-                  <Award className={isDark ? 'text-[#e0af68]' : 'text-purple-500'} size={18} />
-                </div>
-                <p className="text-2xl font-mono font-bold">{streakCount}</p>
-                <p className={`text-xs font-medium uppercase tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Streak</p>
-              </div>
           </div>
-        </motion.div>
-        )}
-      </AnimatePresence>
-      
-      {showTip && (
-        <motion.div 
-          initial={{ opacity: 0, y: 5 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={`flex items-center gap-2 p-4 rounded-xl text-sm mb-4 ${
-            isDark ? 'bg-[#2D2D40]/60 text-[#7aa2f7]' : 'bg-purple-100/50 text-purple-700'
-          }`}
-        >
-          <Rocket size={18} />
-          <p className="font-medium">Type the text as it appears. The highlighted character shows your current position.</p>
-          <button 
-            onClick={() => setShowTip(false)} 
-            className={`ml-auto p-1.5 rounded-lg hover:bg-opacity-80 transition-all ${
-              isDark ? 'hover:bg-[#1a1b26]' : 'hover:bg-white/50'
+      </div>
+
+      <div className="px-5 flex-1 flex flex-col">
+        <AnimatePresence>
+          {showStats && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="grid grid-cols-4 gap-3 mb-4">
+                <div className={`flex flex-col items-center p-4 rounded-lg ${
+                  isDark ? 'bg-slate-800' : 'bg-indigo-50'
+                }`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 ${
+                    isDark ? 'bg-indigo-500/20' : 'bg-indigo-100'
+                  }`}>
+                    <Zap className={isDark ? 'text-indigo-400 w-4 h-4' : 'text-indigo-500 w-4 h-4'} />
+                  </div>
+                  <p className={`text-2xl font-mono font-bold ${
+                    isDark ? 'text-white' : 'text-indigo-600'
+                  }`}>{wpm}</p>
+                  <p className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>WPM</p>
+                </div>
+                <div className={`flex flex-col items-center p-4 rounded-lg ${
+                  isDark ? 'bg-slate-800' : 'bg-indigo-50'
+                }`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 ${
+                    isDark ? 'bg-indigo-500/20' : 'bg-indigo-100'
+                  }`}>
+                    <Check className={isDark ? 'text-emerald-400 w-4 h-4' : 'text-emerald-500 w-4 h-4'} />
+                  </div>
+                  <p className={`text-2xl font-mono font-bold ${
+                    isDark ? 'text-white' : 'text-emerald-600'
+                  }`}>{accuracy}%</p>
+                  <p className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Accuracy</p>
+                </div>
+                <div className={`flex flex-col items-center p-4 rounded-lg ${
+                  isDark ? 'bg-slate-800' : 'bg-indigo-50'
+                }`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 ${
+                    isDark ? 'bg-indigo-500/20' : 'bg-indigo-100'
+                  }`}>
+                    <AlertTriangle className={isDark ? 'text-amber-400 w-4 h-4' : 'text-amber-500 w-4 h-4'} />
+                  </div>
+                  <p className={`text-2xl font-mono font-bold ${
+                    isDark ? 'text-white' : 'text-amber-600'
+                  }`}>{errors}</p>
+                  <p className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Errors</p>
+                </div>
+                <div className={`flex flex-col items-center p-4 rounded-lg ${
+                  isDark ? 'bg-slate-800' : 'bg-indigo-50'
+                }`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 ${
+                    isDark ? 'bg-indigo-500/20' : 'bg-indigo-100'
+                  }`}>
+                    <Clock className={isDark ? 'text-sky-400 w-4 h-4' : 'text-sky-500 w-4 h-4'} />
+                  </div>
+                  <p className={`text-2xl font-mono font-bold ${
+                    isDark ? 'text-white' : 'text-sky-600'
+                  }`}>{startTime ? Math.floor((Date.now() - startTime) / 1000) : 0}s</p>
+                  <p className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Time</p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        
+        {showTip && (
+          <motion.div 
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`flex items-start gap-3 p-4 rounded-lg text-sm mb-4 ${
+              isDark ? 'bg-indigo-500/10 text-indigo-300' : 'bg-indigo-50 text-indigo-700'
             }`}
           >
-            ✕
-          </button>
-        </motion.div>
-      )}
+            <div className="mt-0.5">
+              <BookOpen size={16} />
+            </div>
+            <div>
+              <p className="font-medium mb-1">Typing Tips</p>
+              <p className="text-xs leading-relaxed">
+                Type the text as it appears. The highlighted character shows your current position. 
+                Focus on accuracy first, then speed will follow naturally. Keep your fingers on the home row keys for better efficiency.
+              </p>
+            </div>
+            <button 
+              onClick={() => setShowTip(false)} 
+              className={`ml-auto p-1 rounded ${
+                isDark ? 'hover:bg-indigo-500/20' : 'hover:bg-indigo-100'
+              }`}
+            >
+              ✕
+            </button>
+          </motion.div>
+        )}
 
-      {/* Enhanced Typing Area */}
-      <div className={`rounded-xl px-6 py-8 mb-6 overflow-hidden ${
-        isDark ? 'bg-[#16161e]/90 shadow-inner shadow-black/20' : 'bg-purple-50/90 shadow-inner shadow-purple-500/5'
-      }`}>
-        {!isPlaying && !allLyrics ? (
-          <div className="text-center py-12 px-4">
-            <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
-              isDark ? 'bg-[#1a1b26]' : 'bg-white'
-            }`}>
-              <Music className={`${isDark ? 'text-[#7aa2f7]' : 'text-purple-500'}`} size={24} />
+        {/* Main typing area */}
+        <div className={`p-6 mb-4 rounded-xl overflow-hidden flex-1 flex flex-col ${
+          isDark 
+            ? 'bg-slate-800/50 border border-slate-700/50' 
+            : 'bg-slate-50 border border-slate-100'
+        }`}>
+          {!isPlaying && !allLyrics ? (
+            <div className="text-center py-12 px-4 flex-1 flex items-center justify-center">
+              <div>
+                <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
+                  isDark ? 'bg-slate-700' : 'bg-indigo-100'
+                }`}>
+                  <Keyboard className={`${isDark ? 'text-indigo-400' : 'text-indigo-500'}`} size={24} />
+                </div>
+                <h3 className={`text-xl font-bold mb-2 ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                  Ready to Type
+                </h3>
+                <p className={`font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                  Play a song to start your typing practice
+                </p>
+              </div>
             </div>
-            <h3 className={`text-xl font-bold mb-2 ${isDark ? 'text-white' : 'text-gray-800'}`}>
-              Ready to Type
-            </h3>
-            <p className={`font-medium ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-              Play a song to start your typing practice
-            </p>
-          </div>
-        ) : isPlaying && !allLyrics ? (
-          <div className="text-center py-12 px-4">
-            <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
-              isDark ? 'bg-[#1a1b26]' : 'bg-white'
-            }`}>
-              <AlertTriangle className={`${isDark ? 'text-yellow-500' : 'text-yellow-500'}`} size={24} />
+          ) : isPlaying && !allLyrics ? (
+            <div className="text-center py-12 px-4 flex-1 flex items-center justify-center">
+              <div>
+                <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
+                  isDark ? 'bg-slate-700' : 'bg-indigo-100'
+                }`}>
+                  <div className="animate-spin h-8 w-8 border-4 border-indigo-400 rounded-full border-t-transparent"></div>
+                </div>
+                <h3 className={`text-xl font-bold mb-2 ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                  Loading Lyrics
+                </h3>
+                <p className={`font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                  Preparing your typing challenge...
+                </p>
+              </div>
             </div>
-            <h3 className={`text-xl font-bold mb-2 ${isDark ? 'text-white' : 'text-gray-800'}`}>
-              Loading Lyrics
-            </h3>
-            <p className={`font-medium ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-              Preparing your typing challenge...
-            </p>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center">
-            <div className="w-full overflow-hidden py-6 px-3 relative min-h-[100px]">
-              {renderMonkeyTypeLyrics()}
-              {typedText.length < allLyrics.length && renderCursor()}
-            </div>
+          ) : (
+            <div className="flex flex-col h-full">
+              <div className="mb-4 flex-1 overflow-hidden relative min-h-[150px] rounded-lg border border-slate-700/20">
+                {renderTypingText()}
+              </div>
 
-            {/* Enhanced stats bar with real-time feedback */}
-            <div className="mt-6 w-full max-w-3xl">
-              <div className="grid grid-cols-3 gap-4 mb-4">
-                <div className={`text-center p-2 rounded-lg ${isDark ? 'bg-[#1a1b26]' : 'bg-white'}`}>
-                  <span className={`text-xs uppercase font-medium ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>Speed</span>
-                  <p className={`text-xl font-mono font-bold ${isDark ? 'text-[#7aa2f7]' : 'text-purple-600'}`}>{wpm} WPM</p>
+              {/* Enhanced progress bar */}
+              <div className="mt-auto">
+                <div className="flex justify-between text-xs mb-2">
+                  <span className={isDark ? 'text-slate-500' : 'text-slate-500'}>Progress</span>
+                  <span className={`font-medium ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>
+                    {typedText.length}/{allLyrics ? allLyrics.length : 0} characters
+                  </span>
                 </div>
-                <div className={`text-center p-2 rounded-lg ${isDark ? 'bg-[#1a1b26]' : 'bg-white'}`}>
-                  <span className={`text-xs uppercase font-medium ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>Accuracy</span>
-                  <p className={`text-xl font-mono font-bold ${isDark ? 'text-[#bb9af7]' : 'text-indigo-600'}`}>{accuracy}%</p>
+                <div className="w-full bg-slate-700/20 dark:bg-slate-700/30 rounded-full h-2 relative overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${allLyrics ? (typedText.length / allLyrics.length) * 100 : 0}%` }}
+                    transition={{ duration: 0.2 }}
+                    className={`h-2 rounded-full ${
+                      isDark 
+                        ? 'bg-gradient-to-r from-indigo-500 to-purple-500' 
+                        : 'bg-gradient-to-r from-indigo-500 to-purple-500'
+                    }`}
+                  ></motion.div>
                 </div>
-                <div className={`text-center p-2 rounded-lg ${isDark ? 'bg-[#1a1b26]' : 'bg-white'}`}>
-                  <span className={`text-xs uppercase font-medium ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>Progress</span>
-                  <p className={`text-xl font-mono font-bold ${isDark ? 'text-[#9ece6a]' : 'text-green-600'}`}>{allLyrics ? Math.round((typedText.length / allLyrics.length) * 100) : 0}%</p>
-                </div>
-              </div>
-              
-              <div className="flex justify-between text-xs mb-2">
-                <span className={isDark ? 'text-gray-500' : 'text-gray-500'}>Progress</span>
-                <span className={`font-medium ${isDark ? 'text-[#7aa2f7]' : 'text-purple-600'}`}>
-                  {typedText.length}/{allLyrics ? allLyrics.length : 0} characters
-                </span>
-              </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700/30 rounded-full h-2 relative overflow-hidden">
-                <motion.div 
-                  initial={{ width: 0 }}
-                  animate={{ width: `${allLyrics ? (typedText.length / allLyrics.length) * 100 : 0}%` }}
-                  transition={{ duration: 0.2 }}
-                  className={`h-2 rounded-full ${isDark ? 'bg-gradient-to-r from-[#7aa2f7] to-[#bb9af7]' : 'bg-gradient-to-r from-purple-600 to-indigo-500'}`}
-                ></motion.div>
               </div>
             </div>
-          </div>
+          )}
+        </div>
+
+        {/* Completion card */}
+        {isComplete && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`rounded-xl p-6 text-center mb-4 ${
+              isDark 
+                ? 'bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30' 
+                : 'bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200'
+            }`}
+          >
+            <div className="mx-auto w-16 h-16 rounded-full border-4 border-green-400 flex items-center justify-center mb-4">
+              <Award className="text-green-400 w-8 h-8" />
+            </div>
+            <h3 className={`text-xl font-bold mb-2 ${isDark ? 'text-white' : 'text-slate-800'}`}>
+              Perfect Performance!
+            </h3>
+            <p className={`mb-6 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+              You've completed typing with {wpm} WPM and {accuracy}% accuracy!
+            </p>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={handleReset}
+              className={`px-6 py-2.5 rounded-lg font-medium ${
+                isDark 
+                  ? 'bg-indigo-500 text-white hover:bg-indigo-600' 
+                  : 'bg-indigo-500 text-white hover:bg-indigo-600'
+              }`}
+            >
+              Try again
+            </motion.button>
+          </motion.div>
         )}
       </div>
 
       {/* Hidden textarea for typing */}
-      <div className="flex-1 relative overflow-hidden">
+      <div className="relative">
         <textarea
           ref={textareaRef}
           value={typedText}
           onChange={handleTyping}
           disabled={!allLyrics || isComplete}
-          className={`absolute w-full h-full resize-none font-mono opacity-0 focus:outline-none`}
+          className="absolute top-0 left-0 w-full h-1 opacity-0 focus:outline-none resize-none"
           spellCheck={false}
           autoComplete="off"
+          autoCorrect="off"
+          aria-label="Typing area"
         />
-        
-        <div className="w-full h-full flex items-center justify-center">
-          {!allLyrics ? (
-            <p className={`text-center ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-              {isPlaying 
-                ? 'Loading lyrics...' 
-                : 'Play a song to start typing'}
-            </p>
-          ) : allLyrics && !typedText.length ? (
-            <p className={`text-center font-medium px-4 py-2 rounded-lg ${
-              isDark 
-                ? 'text-[#c0caf5] bg-[#414868]/30 border border-[#414868]/50' 
-                : 'text-purple-700 bg-purple-50 border border-purple-100'
-            }`}>
-              Click anywhere to start typing
-            </p>
-          ) : null}
-        </div>
       </div>
-
-      {isComplete && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={`text-center py-6 px-8 rounded-xl ${
-            isDark 
-              ? 'bg-gradient-to-br from-[#414868]/60 to-[#1a1b26] border border-[#7aa2f7]/30' 
-              : 'bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-100'
-          }`}
-        >
-          <div className={`w-16 h-16 mx-auto mb-3 rounded-full flex items-center justify-center ${
-            isDark ? 'bg-[#7aa2f7]/20' : 'bg-white'
-          }`}>
-            <Award className={isDark ? 'text-[#e0af68]' : 'text-purple-500'} size={24} />
-          </div>
-          <h3 className={`text-xl font-bold mb-2 ${isDark ? 'text-white' : 'text-gray-800'}`}>🎵 Perfect Performance! 🎵</h3>
-          <p className={`mb-4 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-            You've completed typing with <span className="font-bold">{wpm} WPM</span> and <span className="font-bold">{accuracy}%</span> accuracy!
-          </p>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={handleReset}
-            className={`px-6 py-2.5 rounded-lg font-medium ${
-              isDark 
-                ? 'bg-gradient-to-r from-[#7aa2f7] to-[#bb9af7] text-[#1a1b26] hover:opacity-90' 
-                : 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:opacity-90'
-            }`}
-          >
-            Try again
-          </motion.button>
-        </motion.div>
-      )}
     </motion.div>
   );
 }

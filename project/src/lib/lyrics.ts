@@ -47,6 +47,73 @@ export const demoSongs: Record<string, Song> = {
       { text: "Little high, little low", startTime: 35.5, endTime: 38 },
       { text: "Any way the wind blows doesn't really matter to me, to me", startTime: 38.5, endTime: 49 },
     ]
+  },
+  'JGwWNGJdvx8': { // Ed Sheeran - Shape of You
+    title: 'Shape of You',
+    artist: 'Ed Sheeran',
+    lyrics: [
+      { text: "The club isn't the best place to find a lover", startTime: 10, endTime: 13 },
+      { text: "So the bar is where I go", startTime: 13.5, endTime: 16 },
+      { text: "Me and my friends at the table doing shots", startTime: 16.5, endTime: 19 },
+      { text: "Drinking fast and then we talk slow", startTime: 19.5, endTime: 22 },
+      { text: "Come over and start up a conversation with just me", startTime: 22.5, endTime: 26 },
+      { text: "And trust me I'll give it a chance now", startTime: 26.5, endTime: 29 },
+      { text: "Take my hand, stop, put Van the Man on the jukebox", startTime: 30, endTime: 33 },
+      { text: "And then we start to dance, and now I'm singing like", startTime: 33.5, endTime: 36 },
+      { text: "Girl, you know I want your love", startTime: 36.5, endTime: 39 },
+      { text: "Your love was handmade for somebody like me", startTime: 39.5, endTime: 42 },
+      { text: "Come on now, follow my lead", startTime: 42.5, endTime: 45 },
+      { text: "I may be crazy, don't mind me", startTime: 45.5, endTime: 48 },
+    ]
+  },
+  'kJQP7kiw5Fk': { // Luis Fonsi - Despacito
+    title: 'Despacito',
+    artist: 'Luis Fonsi ft. Daddy Yankee',
+    lyrics: [
+      { text: "Ay, Fonsi, DY", startTime: 19, endTime: 22 },
+      { text: "Oh, oh no, oh no", startTime: 22.5, endTime: 25 },
+      { text: "Hey yeah, Diridiri, dirididi Daddy", startTime: 25.5, endTime: 28 },
+      { text: "Go!", startTime: 28.5, endTime: 30 },
+      { text: "Sí, sabes que ya llevo un rato mirándote", startTime: 30.5, endTime: 33 },
+      { text: "Tengo que bailar contigo hoy", startTime: 33.5, endTime: 36 },
+      { text: "Vi que tu mirada ya estaba llamándome", startTime: 36.5, endTime: 39 },
+      { text: "Muéstrame el camino que yo voy", startTime: 39.5, endTime: 42 },
+      { text: "Tú, tú eres el imán y yo soy el metal", startTime: 42.5, endTime: 45 },
+      { text: "Me voy acercando y voy armando el plan", startTime: 45.5, endTime: 48 },
+      { text: "Solo con pensarlo se acelera el pulso", startTime: 48.5, endTime: 51 },
+    ]
+  },
+  'OPf0YbXqDm0': { // Mark Ronson - Uptown Funk
+    title: 'Uptown Funk',
+    artist: 'Mark Ronson ft. Bruno Mars',
+    lyrics: [
+      { text: "This hit, that ice cold", startTime: 43, endTime: 45 },
+      { text: "Michelle Pfeiffer, that white gold", startTime: 45.5, endTime: 48 },
+      { text: "This one for them hood girls", startTime: 48.5, endTime: 51 },
+      { text: "Them good girls, straight masterpieces", startTime: 51.5, endTime: 54 },
+      { text: "Stylin', wilin', livin' it up in the city", startTime: 54.5, endTime: 57 },
+      { text: "Got Chucks on with Saint Laurent", startTime: 57.5, endTime: 60 },
+      { text: "Gotta kiss myself, I'm so pretty", startTime: 60.5, endTime: 65 },
+      { text: "I'm too hot (hot damn)", startTime: 65.5, endTime: 68 },
+      { text: "Called a police and a fireman", startTime: 68.5, endTime: 71 },
+      { text: "I'm too hot (hot damn)", startTime: 71.5, endTime: 74 },
+      { text: "Make a dragon wanna retire, man", startTime: 74.5, endTime: 77 },
+    ]
+  },
+  'YQHsXMglC9A': { // Adele - Hello
+    title: 'Hello',
+    artist: 'Adele',
+    lyrics: [
+      { text: "Hello, it's me", startTime: 77, endTime: 80 },
+      { text: "I was wondering if after all these years", startTime: 80.5, endTime: 84 },
+      { text: "You'd like to meet, to go over everything", startTime: 84.5, endTime: 88 },
+      { text: "They say that time's supposed to heal ya", startTime: 88.5, endTime: 92 },
+      { text: "But I ain't done much healing", startTime: 92.5, endTime: 96 },
+      { text: "Hello, can you hear me?", startTime: 96.5, endTime: 100 },
+      { text: "I'm in California dreaming about who we used to be", startTime: 100.5, endTime: 104 },
+      { text: "When we were younger and free", startTime: 104.5, endTime: 108 },
+      { text: "I've forgotten how it felt before the world fell at our feet", startTime: 108.5, endTime: 112 },
+    ]
   }
 };
 

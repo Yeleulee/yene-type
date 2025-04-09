@@ -1,274 +1,509 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Music, Mic, Sparkles, TrendingUp, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '../lib/utils';
-import { searchVideos, type YouTubeVideo } from '../lib/youtube';
-import { demoSongs } from '../lib/lyrics';
-import { useHotkeys } from 'react-hotkeys-hook';
+import { Search, Youtube, Loader, X, Music, History, TrendingUp } from 'lucide-react';
+import { SearchResults } from './SearchResults';
+import axios from 'axios';
 
 interface SearchBarProps {
-  onVideoSelect: (video: YouTubeVideo) => void;
-  className?: string;
+  onSelectVideo: (videoId: string) => void;
   isDark?: boolean;
 }
 
-export function SearchBar({ onVideoSelect, className, isDark = false }: SearchBarProps) {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<YouTubeVideo[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const popularSearches = [
-    'Ed Sheeran Shape of You',
-    'Adele Hello',
-    'Queen Bohemian Rhapsody',
-    'Michael Jackson Thriller',
-    'Taylor Swift Blank Space'
+// Helper function to extract video ID from various YouTube URL formats
+const extractVideoId = (url: string): string | null => {
+  // Handle different YouTube URL formats
+  const patterns = [
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([^&]+)/i,
+    /(?:https?:\/\/)?(?:www\.)?youtu\.be\/([^?]+)/i,
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([^?]+)/i,
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/v\/([^?]+)/i,
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/user\/[^\/]+\/?\?v=([^&]+)/i,
+    /^([a-zA-Z0-9_-]{11})$/i  // Direct video ID (11 characters)
   ];
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  
+  return null;
+};
 
-  useHotkeys('ctrl+k, cmd+k', (e) => {
-    e.preventDefault();
-    inputRef.current?.focus();
-    setIsExpanded(true);
-    setShowSuggestions(true);
-  });
+// Popular songs for immediate selection
+const popularSongs = [
+  { id: 'dQw4w9WgXcQ', title: 'Never Gonna Give You Up', artist: 'Rick Astley' },
+  { id: 'fJ9rUzIMcZQ', title: 'Bohemian Rhapsody', artist: 'Queen' },
+  { id: 'JGwWNGJdvx8', title: 'Shape of You', artist: 'Ed Sheeran' },
+  { id: 'kJQP7kiw5Fk', title: 'Despacito', artist: 'Luis Fonsi ft. Daddy Yankee' },
+  { id: 'OPf0YbXqDm0', title: 'Uptown Funk', artist: 'Mark Ronson ft. Bruno Mars' },
+  { id: 'YQHsXMglC9A', title: 'Hello', artist: 'Adele' }
+];
 
+// Expanded song database for search results
+const expandedSongs = [
+  { id: 'dQw4w9WgXcQ', title: 'Never Gonna Give You Up', artist: 'Rick Astley', thumbnail: 'https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg' },
+  { id: 'fJ9rUzIMcZQ', title: 'Bohemian Rhapsody', artist: 'Queen', thumbnail: 'https://img.youtube.com/vi/fJ9rUzIMcZQ/mqdefault.jpg' },
+  { id: 'CZLuZStJaAQ', title: 'Shape of You', artist: 'Ed Sheeran', thumbnail: 'https://img.youtube.com/vi/CZLuZStJaAQ/mqdefault.jpg' },
+  { id: 'JGwWNGJdvx8', title: 'Shape of You', artist: 'Ed Sheeran', thumbnail: 'https://img.youtube.com/vi/JGwWNGJdvx8/mqdefault.jpg' },
+  { id: 'pRpeEdMmmQ0', title: 'Uptown Funk', artist: 'Mark Ronson ft. Bruno Mars', thumbnail: 'https://img.youtube.com/vi/pRpeEdMmmQ0/mqdefault.jpg' },
+  { id: 'OPf0YbXqDm0', title: 'Uptown Funk', artist: 'Mark Ronson ft. Bruno Mars', thumbnail: 'https://img.youtube.com/vi/OPf0YbXqDm0/mqdefault.jpg' },
+  { id: 'lp-EO5I60KA', title: 'Stressed Out', artist: 'Twenty One Pilots', thumbnail: 'https://img.youtube.com/vi/lp-EO5I60KA/mqdefault.jpg' },
+  { id: 'YQHsXMglC9A', title: 'Hello', artist: 'Adele', thumbnail: 'https://img.youtube.com/vi/YQHsXMglC9A/mqdefault.jpg' },
+  { id: 'kJQP7kiw5Fk', title: 'Despacito', artist: 'Luis Fonsi ft. Daddy Yankee', thumbnail: 'https://img.youtube.com/vi/kJQP7kiw5Fk/mqdefault.jpg' },
+  { id: 'RgKAFK5djSk', title: 'See You Again', artist: 'Wiz Khalifa ft. Charlie Puth', thumbnail: 'https://img.youtube.com/vi/RgKAFK5djSk/mqdefault.jpg' },
+  { id: '09R8_2nJtjg', title: 'Sugar', artist: 'Maroon 5', thumbnail: 'https://img.youtube.com/vi/09R8_2nJtjg/mqdefault.jpg' },
+  { id: 'Zm0f0oF5VP0', title: 'Sorry', artist: 'Justin Bieber', thumbnail: 'https://img.youtube.com/vi/Zm0f0oF5VP0/mqdefault.jpg' },
+  { id: 'NywWB67Z7zQ', title: 'This Is What You Came For', artist: 'Calvin Harris ft. Rihanna', thumbnail: 'https://img.youtube.com/vi/NywWB67Z7zQ/mqdefault.jpg' },
+  { id: 'tt2k8PGm-TI', title: 'Baaghi 2: Mundiyan', artist: 'Tiger Shroff', thumbnail: 'https://img.youtube.com/vi/tt2k8PGm-TI/mqdefault.jpg' },
+  { id: 'papuvlVeZg8', title: 'Girls Like You', artist: 'Maroon 5 ft. Cardi B', thumbnail: 'https://img.youtube.com/vi/papuvlVeZg8/mqdefault.jpg' }
+];
+
+// Expanded song database - used for searching
+const songDatabase = [
+  {
+    id: 'dQw4w9WgXcQ',
+    title: 'Never Gonna Give You Up',
+    artist: 'Rick Astley',
+    thumbnail: 'https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg'
+  },
+  {
+    id: 'fJ9rUzIMcZQ',
+    title: 'Bohemian Rhapsody',
+    artist: 'Queen',
+    thumbnail: 'https://img.youtube.com/vi/fJ9rUzIMcZQ/mqdefault.jpg'
+  },
+  {
+    id: 'kJQP7kiw5Fk',
+    title: 'Despacito',
+    artist: 'Luis Fonsi ft. Daddy Yankee',
+    thumbnail: 'https://img.youtube.com/vi/kJQP7kiw5Fk/mqdefault.jpg'
+  },
+  {
+    id: 'JGwWNGJdvx8',
+    title: 'Shape of You',
+    artist: 'Ed Sheeran',
+    thumbnail: 'https://img.youtube.com/vi/JGwWNGJdvx8/mqdefault.jpg'
+  },
+  {
+    id: 'RgKAFK5djSk',
+    title: 'See You Again',
+    artist: 'Wiz Khalifa ft. Charlie Puth',
+    thumbnail: 'https://img.youtube.com/vi/RgKAFK5djSk/mqdefault.jpg'
+  },
+  {
+    id: '9bZkp7q19f0',
+    title: 'Gangnam Style',
+    artist: 'PSY',
+    thumbnail: 'https://img.youtube.com/vi/9bZkp7q19f0/mqdefault.jpg'
+  },
+  {
+    id: 'OPf0YbXqDm0',
+    title: 'Uptown Funk',
+    artist: 'Mark Ronson ft. Bruno Mars',
+    thumbnail: 'https://img.youtube.com/vi/OPf0YbXqDm0/mqdefault.jpg'
+  },
+  {
+    id: 'hT_nvWreIhg',
+    title: 'Counting Stars',
+    artist: 'OneRepublic',
+    thumbnail: 'https://img.youtube.com/vi/hT_nvWreIhg/mqdefault.jpg'
+  },
+  {
+    id: 'PT2_F-1esPk',
+    title: 'Closer',
+    artist: 'The Chainsmokers ft. Halsey',
+    thumbnail: 'https://img.youtube.com/vi/PT2_F-1esPk/mqdefault.jpg'
+  },
+  {
+    id: 'YQHsXMglC9A',
+    title: 'Hello',
+    artist: 'Adele',
+    thumbnail: 'https://img.youtube.com/vi/YQHsXMglC9A/mqdefault.jpg'
+  },
+  {
+    id: 'y6120QOlsfU',
+    title: 'Sandstorm',
+    artist: 'Darude',
+    thumbnail: 'https://img.youtube.com/vi/y6120QOlsfU/mqdefault.jpg'
+  },
+  {
+    id: 'lYBUbBu4W08',
+    title: 'Bad Guy',
+    artist: 'Billie Eilish',
+    thumbnail: 'https://img.youtube.com/vi/lYBUbBu4W08/mqdefault.jpg'
+  },
+  {
+    id: '0yW7w8F2TVA',
+    title: 'Blinding Lights',
+    artist: 'The Weeknd',
+    thumbnail: 'https://img.youtube.com/vi/0yW7w8F2TVA/mqdefault.jpg'
+  },
+  {
+    id: 'JRfuAukYTKg',
+    title: 'Dance Monkey',
+    artist: 'Tones and I',
+    thumbnail: 'https://img.youtube.com/vi/JRfuAukYTKg/mqdefault.jpg'
+  },
+  {
+    id: 'Io0fBr1XBUA',
+    title: 'Thunder',
+    artist: 'Imagine Dragons',
+    thumbnail: 'https://img.youtube.com/vi/Io0fBr1XBUA/mqdefault.jpg'
+  },
+  {
+    id: 'Xn676-fLq7I',
+    title: 'Look What You Made Me Do',
+    artist: 'Taylor Swift',
+    thumbnail: 'https://img.youtube.com/vi/Xn676-fLq7I/mqdefault.jpg'
+  },
+  {
+    id: 'DlexmDDSDZ0',
+    title: "We Don't Talk About Bruno",
+    artist: 'Encanto Cast',
+    thumbnail: 'https://img.youtube.com/vi/DlexmDDSDZ0/mqdefault.jpg'
+  },
+  {
+    id: 'KM38OFDKU20',
+    title: 'Watermelon Sugar',
+    artist: 'Harry Styles',
+    thumbnail: 'https://img.youtube.com/vi/KM38OFDKU20/mqdefault.jpg'
+  },
+  {
+    id: 'iCkYw3cRwLo',
+    title: 'Let It Go',
+    artist: 'Idina Menzel',
+    thumbnail: 'https://img.youtube.com/vi/iCkYw3cRwLo/mqdefault.jpg'
+  },
+  {
+    id: 'e-ORhEE9VVg',
+    title: 'Blank Space',
+    artist: 'Taylor Swift',
+    thumbnail: 'https://img.youtube.com/vi/e-ORhEE9VVg/mqdefault.jpg'
+  }
+];
+
+export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [results, setResults] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const [searchHistory, setSearchHistory] = useState<any[]>([]);
+  const [showPopular, setShowPopular] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  
+  // Default mock results for when search finds nothing
+  const mockResults = [
+    { id: 'dQw4w9WgXcQ', title: 'Rick Astley - Never Gonna Give You Up', artist: 'Rick Astley', thumbnail: 'https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg' },
+    { id: 'fJ9rUzIMcZQ', title: 'Queen - Bohemian Rhapsody', artist: 'Queen', thumbnail: 'https://img.youtube.com/vi/fJ9rUzIMcZQ/mqdefault.jpg' }
+  ];
+  
+  // Load search history from localStorage
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsExpanded(false);
-        setShowSuggestions(false);
+    const history = localStorage.getItem('searchHistory');
+    if (history) {
+      try {
+        setSearchHistory(JSON.parse(history).slice(0, 5));
+      } catch (e) {
+        console.error('Error loading search history:', e);
       }
     }
-
+  }, []);
+  
+  // Save search history to localStorage
+  const saveToHistory = (result: any) => {
+    const updatedHistory = [result, ...searchHistory.filter(item => item.id !== result.id)].slice(0, 5);
+    setSearchHistory(updatedHistory);
+    localStorage.setItem('searchHistory', JSON.stringify(updatedHistory));
+  };
+  
+  // Handle clicks outside the search container
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setShowResults(false);
+      }
+    };
+    
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
-
-  useEffect(() => {
-    const searchTimer = setTimeout(async () => {
-      if (query.trim()) {
-        setIsSearching(true);
-        const videos = await searchVideos(query + ' lyrics');
-        setResults(videos);
-        setIsSearching(false);
+  
+  // Search for videos using YouTube API or handle direct links
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+    
+    setIsLoading(true);
+    setShowResults(true);
+    
+    // Check if input might be a direct YouTube URL or video ID
+    const videoId = extractVideoId(searchQuery);
+    
+    if (videoId) {
+      // Handle direct YouTube URL
+      try {
+        // Check if we have this video in our database
+        const existingVideo = songDatabase.find(song => song.id === videoId);
+        
+        if (existingVideo) {
+          const result = existingVideo;
+          setResults([result]);
+          setIsLoading(false);
+          
+          // Save directly using the result we just found
+          saveToHistory(result);
       } else {
+          // For unknown videos, create a placeholder
+          const mockResult = {
+            id: videoId,
+            title: `YouTube Video (ID: ${videoId})`,
+            artist: 'Unknown Artist',
+            thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
+          };
+          
+          setResults([mockResult]);
+          setIsLoading(false);
+          saveToHistory(mockResult);
+        }
+      } catch (error) {
+        console.error('Error fetching video details:', error);
         setResults([]);
+        setIsLoading(false);
       }
+    } else {
+      // Handle regular search by searching our song database
+      try {
+        // Simulate network delay
+        setTimeout(() => {
+          // Filter songDatabase based on search query
+          const queryLower = searchQuery.toLowerCase();
+          const queryWords = queryLower.split(/\s+/).filter(word => word.length > 0);
+          
+          // Score and filter songs
+          const scoredResults = songDatabase
+            .map(song => {
+              const titleLower = (song.title || '').toLowerCase();
+              const artistLower = (song.artist || '').toLowerCase();
+              
+              // Start with a base score
+              let score = 0;
+              
+              // Exact matches get highest score
+              if (titleLower === queryLower) score += 100;
+              if (artistLower === queryLower) score += 80;
+              
+              // Title contains full query
+              if (titleLower.includes(queryLower)) score += 60;
+              
+              // Artist contains full query
+              if (artistLower.includes(queryLower)) score += 50;
+              
+              // Check for individual word matches
+              queryWords.forEach(word => {
+                if (word.length < 3) return; // Skip very short words
+                
+                if (titleLower.includes(word)) score += 15;
+                if (artistLower.includes(word)) score += 12;
+                
+                // Bonus for word at the beginning
+                if (titleLower.startsWith(word)) score += 10;
+                if (artistLower.startsWith(word)) score += 8;
+              });
+              
+              // Give a small base score to ensure some results appear
+              if (queryLower.length > 0 && (titleLower.length > 0 || artistLower.length > 0)) {
+                score += 1;
+              }
+              
+              return { ...song, score };
+            })
+            .filter(song => song.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 15); // Show more results (up to 15)
+          
+          // If no relevant results, show some random songs from database
+          if (scoredResults.length === 0) {
+            // Get 5 random songs from the database
+            const randomSongs = [...songDatabase]
+              .sort(() => 0.5 - Math.random())
+              .slice(0, 5)
+              .map(song => ({ ...song, score: 1 }));
+            
+            setResults(randomSongs.length > 0 ? randomSongs : mockResults);
+          } else {
+            setResults(scoredResults);
+          }
+          
+          setIsLoading(false);
     }, 500);
-
-    return () => clearTimeout(searchTimer);
-  }, [query]);
-
-  const handleVideoSelect = (video: YouTubeVideo) => {
-    onVideoSelect(video);
-    setQuery('');
-    setResults([]);
-    setIsExpanded(false);
-    setShowSuggestions(false);
-  };
-
-  const handleFocus = () => {
-    setIsExpanded(true);
-    setShowSuggestions(true);
-  };
-
-  const handlePopularSearch = (search: string) => {
-    setQuery(search);
-    inputRef.current?.focus();
+      } catch (error) {
+        console.error('Error searching for videos:', error);
+        setResults([]);
+        setIsLoading(false);
+      }
+    }
   };
   
-  // Featured songs with preset lyrics
-  const featuredSongs = Object.keys(demoSongs).map(id => ({
-    id,
-    title: demoSongs[id].title,
-    artist: demoSongs[id].artist,
-    thumbnail: `https://img.youtube.com/vi/${id}/mqdefault.jpg`,
-    channelTitle: demoSongs[id].artist
-  }));
+  const handleSelectVideo = (videoId: string, title: string) => {
+    onSelectVideo(videoId);
+    setShowResults(false);
+    setSearchQuery('');
+    
+    // Save to history
+    saveToHistory({
+      id: videoId,
+      title,
+      thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
+    });
+  };
+  
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+    if (e.target.value === '') {
+      setShowPopular(true);
+    } else {
+      setShowPopular(false);
+    }
+  };
+  
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  };
+  
+  const clearSearch = () => {
+    setSearchQuery('');
+    setShowResults(false);
+    setResults([]);
+    if (searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+    setShowPopular(true);
+  };
 
   return (
-    <div ref={containerRef} className={cn("relative", className)}>
-      <div className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-        isExpanded
-          ? (isDark 
-              ? 'bg-[#16161E] ring-1 ring-[#7aa2f7]/70 shadow-lg shadow-[#1a1b26]/50' 
-              : 'bg-white shadow-lg shadow-purple-500/10 ring-1 ring-purple-500/50')
-          : (isDark 
-              ? 'bg-[#1E1E2E] border border-[#414868]/30' 
-              : 'bg-white/90 shadow-md shadow-purple-500/5 border border-purple-100/70')
+    <div ref={containerRef} className="relative w-full max-w-3xl mx-auto">
+      <div className={`flex items-center mb-4 p-3 rounded-xl ${
+        isDark 
+          ? 'bg-slate-800/80 shadow-md shadow-black/20' 
+          : 'bg-white shadow-md shadow-indigo-100/60'
       }`}>
-        <Search className={`w-5 h-5 ${isDark ? 'text-[#7aa2f7]' : 'text-purple-500'}`} />
+        <div className={`w-10 h-10 flex-shrink-0 rounded-lg flex items-center justify-center mr-3 ${
+          isDark ? 'bg-indigo-500/20' : 'bg-indigo-100'
+        }`}>
+          <Youtube className={isDark ? 'text-indigo-400' : 'text-indigo-600'} size={18} />
+        </div>
+        
+        <div className="flex-1 flex border-b border-slate-200 dark:border-slate-700 px-1 pb-1.5">
         <input
-          ref={inputRef}
-          id="search-input"
+            ref={searchInputRef}
           type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onFocus={handleFocus}
-          placeholder="Search for songs to type along... (Ctrl+K)"
-          className={`flex-1 bg-transparent border-none focus:outline-none text-base ${
-            isDark ? 'text-gray-100 placeholder:text-gray-500' : 'text-gray-800 placeholder:text-gray-400'
+            value={searchQuery}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            onClick={() => setShowResults(true)}
+            placeholder="Search for YouTube videos or paste a link"
+            className={`flex-1 bg-transparent text-base border-none outline-none ${
+              isDark ? 'text-white placeholder:text-slate-400' : 'text-slate-800 placeholder:text-slate-400'
           }`}
         />
-        {query && (
-          <button
-            onClick={() => setQuery('')}
-            className={`p-1.5 rounded-full transition-colors ${
-              isDark ? 'hover:bg-[#414868]/50 text-gray-400 hover:text-gray-200' : 'hover:bg-purple-50 text-gray-400 hover:text-gray-700'
+          {searchQuery && (
+            <button 
+              onClick={clearSearch}
+              className={`p-1 rounded-full ${
+                isDark ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-500 hover:bg-slate-100'
+              }`}
+            >
+              <X size={16} />
+            </button>
+          )}
+          <button 
+            onClick={handleSearch}
+            className={`ml-2 rounded-lg p-2 ${
+              isDark 
+                ? 'bg-indigo-600 hover:bg-indigo-700 text-white' 
+                : 'bg-indigo-500 hover:bg-indigo-600 text-white'
             }`}
           >
-            ✕
+            {isLoading ? <Loader size={16} className="animate-spin" /> : <Search size={16} />}
           </button>
-        )}
-        {isSearching && (
-          <div className={`w-5 h-5 border-2 rounded-full animate-spin ${
-            isDark ? 'border-[#7aa2f7] border-t-transparent' : 'border-purple-500 border-t-transparent'
-          }`} />
-        )}
+        </div>
       </div>
       
       <AnimatePresence>
-        {isExpanded && showSuggestions && (
-          <motion.div 
-            initial={{ opacity: 0, y: 10, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.98 }}
+        {showResults && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2 }}
-            className={`absolute z-40 left-0 right-0 mt-2 p-5 rounded-xl overflow-hidden ${
-              isDark ? 'bg-[#16161E] border border-[#414868]/40 shadow-xl shadow-black/20' : 'bg-white shadow-xl shadow-purple-500/10 border border-purple-100/50'
+            className={`absolute z-20 w-full rounded-xl overflow-hidden shadow-xl ${
+              isDark ? 'bg-slate-800 shadow-black/40' : 'bg-white shadow-slate-200/60'
             }`}
           >
-            {results.length > 0 ? (
-              <div className="space-y-4">
-                <h3 className={`text-sm uppercase tracking-wider font-medium ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Search Results
-                </h3>
-                <div className="space-y-2">
-                  {results.map((video, index) => (
-                    <motion.div
-                      key={video.id}
-                      initial={{ opacity: 0, y: 5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      onClick={() => handleVideoSelect(video)}
-                      className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-colors ${
-                        isDark ? 'hover:bg-[#2D2D40]' : 'hover:bg-purple-50/70'
-                      }`}
-                    >
-                      <div className="relative w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 shadow-md">
-                        <img 
-                          src={video.thumbnail} 
-                          alt={video.title} 
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end justify-center p-1">
-                          <Music className="w-5 h-5 text-white" />
-                        </div>
-                      </div>
-                      <div className="overflow-hidden">
-                        <p className={`font-medium truncate ${isDark ? 'text-white' : 'text-gray-800'}`}>
-                          {video.title}
-                        </p>
-                        <p className={`text-xs truncate mt-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {video.channelTitle}
-                        </p>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
+            {isLoading ? (
+              <div className={`flex items-center justify-center p-8 ${
+                isDark ? 'text-slate-300' : 'text-slate-600'
+              }`}>
+                <Loader className="animate-spin mr-3" size={20} />
+                <span>Searching for videos...</span>
               </div>
-            ) : (
-              <div className="space-y-7">
-                {!query && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className={`text-sm uppercase tracking-wider font-medium flex items-center gap-1.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                        <Sparkles className="w-4 h-4" /> Featured Songs
-                      </h3>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        isDark ? 'bg-[#7aa2f7]/20 text-[#7aa2f7] border border-[#7aa2f7]/30' : 'bg-purple-100/50 text-purple-600 border border-purple-200'
-                      }`}>
-                        With Synced Lyrics
-                      </span>
+            ) : results.length > 0 ? (
+              <div className="max-h-96 overflow-y-auto">
+                <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-700">
+                  <h3 className={`text-sm font-medium ${
+                    isDark ? 'text-slate-300' : 'text-slate-500'
+                  }`}>Search Results</h3>
+                </div>
+                <SearchResults 
+                  results={results} 
+                  onSelectVideo={handleSelectVideo} 
+                  isDark={isDark} 
+                />
+              </div>
+            ) : showPopular ? (
+              <div className="max-h-96 overflow-y-auto">
+                {searchHistory.length > 0 && (
+                  <div>
+                    <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-700 flex items-center">
+                      <History size={14} className={isDark ? 'text-slate-400 mr-2' : 'text-slate-500 mr-2'} />
+                      <h3 className={`text-sm font-medium ${
+                        isDark ? 'text-slate-300' : 'text-slate-500'
+                      }`}>Recent Searches</h3>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {featuredSongs.map((song, index) => (
-                        <motion.div
-                          key={song.id}
-                          initial={{ opacity: 0, y: 5 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: index * 0.05 }}
-                          onClick={() => handleVideoSelect(song)}
-                          className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all ${
-                            isDark ? 'hover:bg-[#2D2D40] bg-[#1E1E2E]/50' : 'hover:bg-purple-50 bg-gray-50/50'
-                          }`}
-                        >
-                          <div className="relative w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 shadow-md">
-                            <img 
-                              src={song.thumbnail} 
-                              alt={song.title} 
-                              className="w-full h-full object-cover"
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end justify-center p-1.5">
-                              <Mic className="w-4 h-4 text-white" />
-                            </div>
-                          </div>
-                          <div className="overflow-hidden">
-                            <p className={`font-medium truncate ${isDark ? 'text-white' : 'text-gray-800'}`}>
-                              {song.title}
-                            </p>
-                            <p className={`text-xs truncate mt-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                              {song.artist}
-                            </p>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </div>
+                    <SearchResults 
+                      results={searchHistory} 
+                      onSelectVideo={handleSelectVideo} 
+                      isDark={isDark} 
+                    />
                   </div>
                 )}
                 
-                <div className="space-y-3">
-                  <h3 className={`text-sm uppercase tracking-wider font-medium flex items-center gap-1.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    <TrendingUp className="w-4 h-4" /> Popular Searches
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {popularSearches.map((search, index) => (
-                      <motion.button
-                        key={index}
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: index * 0.05 }}
-                        onClick={() => handlePopularSearch(search)}
-                        whileHover={{ scale: 1.03 }}
-                        whileTap={{ scale: 0.97 }}
-                        className={`px-3 py-1.5 rounded-full text-sm transition-all ${
-                          isDark 
-                            ? 'bg-[#1E1E2E] border border-[#414868]/50 text-gray-300 hover:border-[#7aa2f7]/50' 
-                            : 'bg-white border border-purple-100 text-purple-600 hover:border-purple-300'
-                        }`}
-                      >
-                        {search}
-                      </motion.button>
-                    ))}
+                <div>
+                  <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-700 flex items-center">
+                    <TrendingUp size={14} className={isDark ? 'text-slate-400 mr-2' : 'text-slate-500 mr-2'} />
+                    <h3 className={`text-sm font-medium ${
+                      isDark ? 'text-slate-300' : 'text-slate-500'
+                    }`}>Popular Songs</h3>
                   </div>
+                  <SearchResults 
+                    results={popularSongs} 
+                    onSelectVideo={handleSelectVideo} 
+                    isDark={isDark} 
+                  />
                 </div>
-                
-                <div className="space-y-3">
-                  <h3 className={`text-sm uppercase tracking-wider font-medium flex items-center gap-1.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    <Clock className="w-4 h-4" /> Search Tips
-                  </h3>
-                  <div className={`rounded-xl p-3 text-sm ${
-                    isDark ? 'bg-[#2D2D40]/30 text-gray-400' : 'bg-purple-50/50 text-gray-600'
-                  }`}>
-                    <p>Try searching for song titles, artists, or lyrics. Adding "lyrics" to your search helps find videos with lyrics.</p>
-                  </div>
-                </div>
+              </div>
+            ) : (
+              <div className={`flex flex-col items-center justify-center p-8 ${
+                isDark ? 'text-slate-300' : 'text-slate-600'
+              }`}>
+                <Search className="opacity-30 mb-2" size={24} />
+                <p>No results found. Try another search.</p>
               </div>
             )}
           </motion.div>

@@ -1,59 +1,53 @@
 import React from 'react';
-import { Music2 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import type { YouTubeVideo } from '../lib/youtube';
 
 interface SearchResultsProps {
-  results: YouTubeVideo[];
-  onVideoSelect: (video: YouTubeVideo) => void;
+  results: any[];
+  onSelectVideo: (videoId: string, title: string) => void;
   isDark?: boolean;
 }
 
-export function SearchResults({ results, onVideoSelect, isDark = false }: SearchResultsProps) {
-  if (results.length === 0) return null;
-
+export function SearchResults({ results, onSelectVideo, isDark = false }: SearchResultsProps) {
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 10 }}
-      className={`absolute top-full left-0 right-0 mt-2 rounded-xl shadow-xl overflow-hidden z-50 ${
-        isDark ? 'bg-[#1a1b26] ring-1 ring-[#414868]' : 'bg-white/90 backdrop-blur-sm'
-      }`}
-    >
-      {results.map((video) => (
-        <motion.button
-          key={video.id}
-          onClick={() => onVideoSelect(video)}
-          className={`w-full p-4 flex items-start gap-4 transition-colors ${
+    <div className="p-1">
+      {results.map((result, index) => (
+        <motion.div
+          key={result.id}
+          initial={{ opacity: 0, y: 5 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: index * 0.05 }}
+          className={`flex items-center gap-3 p-3 my-1 rounded-lg cursor-pointer transition-colors ${
             isDark 
-              ? 'hover:bg-[#24283b] border-b border-[#414868] last:border-0' 
-              : 'hover:bg-purple-50 border-b border-gray-100 last:border-0'
+              ? 'hover:bg-slate-700/60 active:bg-slate-700/80' 
+              : 'hover:bg-indigo-50/60 active:bg-indigo-50/80'
           }`}
-          whileHover={{ scale: 1.01 }}
-          whileTap={{ scale: 0.99 }}
+          onClick={() => onSelectVideo(result.id, result.title)}
         >
-          <div className="relative rounded-md overflow-hidden">
-            <img
-              src={video.thumbnail}
-              alt={video.title}
-              className="w-32 h-18 object-cover"
+          <div className="relative w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 shadow-sm">
+            <img 
+              src={result.thumbnail} 
+              alt={result.title} 
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = 'https://placehold.co/96x96/indigo/white?text=YT';
+              }}
             />
-            <div className={`absolute inset-0 bg-gradient-to-t ${
-              isDark ? 'from-[#1a1b26]/50' : 'from-black/30'
-            } to-transparent`} />
-            <Music2 className="absolute bottom-2 right-2 w-4 h-4 text-white" />
+            <div className={`absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-60`}></div>
+            <div className="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1 rounded">
+              YT
+            </div>
           </div>
-          <div className="flex-1 text-left">
-            <h3 className={`font-medium line-clamp-2 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-              {video.title}
-            </h3>
-            <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              {video.channelTitle}
+          
+          <div className="flex-1 min-w-0">
+            <p className={`font-medium text-sm leading-tight truncate ${isDark ? 'text-white' : 'text-slate-800'}`}>
+              {result.title}
+            </p>
+            <p className={`text-xs truncate mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              {result.artist || 'YouTube'}
             </p>
           </div>
-        </motion.button>
+        </motion.div>
       ))}
-    </motion.div>
+    </div>
   );
 }

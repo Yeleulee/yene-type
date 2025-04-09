@@ -3,7 +3,7 @@ import YouTube, { YouTubePlayer as Player } from 'react-youtube';
 import { motion } from 'framer-motion';
 import { useTypingStore } from '../store/typingStore';
 import { fetchLyrics, formatTime } from '../lib/lyrics';
-import { Music, Clock, Info, Video, Volume2, Loader } from 'lucide-react';
+import { Music, Clock, Info, Video, Volume2, Loader, AlertTriangle } from 'lucide-react';
 
 interface YouTubePlayerProps {
   videoId: string;
@@ -209,17 +209,25 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
   return (
     <div className="space-y-4">
       <div className={`rounded-xl overflow-hidden border shadow-lg ${
-        isDark ? 'bg-[#1a1b26] border-[#24283b] shadow-[#1a1b26]/50' : 'bg-white border-gray-100 shadow-purple-500/10'
+        isDark ? 'bg-[#1E1E2E] border-[#24283b] shadow-[#1a1b26]/50' : 'bg-white border-gray-100 shadow-purple-500/10'
       }`}>
         {/* Toggle for Video/Audio mode */}
-        <div className={`flex items-center justify-between px-4 py-2 ${
-          isDark ? 'bg-[#24283b]' : 'bg-gray-50'
+        <div className={`flex items-center justify-between px-4 py-3 ${
+          isDark ? 'bg-[#16161E]' : 'bg-gray-50'
         }`}>
           <div className="flex items-center gap-2">
             {isAudioOnly ? (
-              <Volume2 className={`w-4 h-4 ${isDark ? 'text-[#7aa2f7]' : 'text-purple-600'}`} />
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                isDark ? 'bg-[#414868]/30' : 'bg-purple-100'
+              }`}>
+                <Volume2 className={`w-4 h-4 ${isDark ? 'text-[#7aa2f7]' : 'text-purple-600'}`} />
+              </div>
             ) : (
-              <Video className={`w-4 h-4 ${isDark ? 'text-[#7aa2f7]' : 'text-purple-600'}`} />
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                isDark ? 'bg-[#414868]/30' : 'bg-purple-100'
+              }`}>
+                <Video className={`w-4 h-4 ${isDark ? 'text-[#7aa2f7]' : 'text-purple-600'}`} />
+              </div>
             )}
             <span className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
               {isAudioOnly ? 'Music Mode' : 'Video Mode'}
@@ -227,13 +235,13 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
           </div>
           
           <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
             onClick={() => setIsAudioOnly(!isAudioOnly)}
-            className={`px-3 py-1 rounded-full text-xs ${
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
               isDark 
-                ? 'bg-[#1a1b26] hover:bg-[#414868] text-gray-300' 
-                : 'bg-white hover:bg-gray-100 text-gray-700 shadow-sm'
+                ? 'bg-[#1a1b26] hover:bg-[#414868] text-[#c0caf5]' 
+                : 'bg-white hover:bg-gray-100 text-purple-700 shadow-sm border border-gray-100'
             }`}
           >
             Switch to {isAudioOnly ? 'Video' : 'Music'} Mode
@@ -242,32 +250,35 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
 
         {/* Video or Audio Player Display */}
         <div 
-          className={`relative ${isAudioOnly ? 'aspect-[10/2]' : 'aspect-video'} overflow-hidden transition-all duration-300`}
+          className={`relative ${isAudioOnly ? 'aspect-[16/5]' : 'aspect-video'} overflow-hidden transition-all duration-300`}
         >
           {/* Conditionally style based on audio-only mode */}
           {isAudioOnly && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-gradient-to-r from-purple-900 via-pink-800 to-indigo-900">
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-gradient-to-r from-purple-900 via-indigo-900 to-blue-900">
               <div className="text-center text-white w-full max-w-2xl px-4">
                 <motion.div
-                  initial={{ scale: 0.9, opacity: 0 }}
+                  initial={{ scale: 0.95, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  className="mb-2"
+                  transition={{ duration: 0.5 }}
+                  className="mb-4"
                 >
-                  <Music className="w-10 h-10 mx-auto mb-2" />
-                  <h3 className="text-xl font-bold">{songInfo.title}</h3>
-                  <p className="text-gray-300 mb-6">{songInfo.artist}</p>
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center bg-white/10 backdrop-blur-sm">
+                    <Music className="w-8 h-8 text-white" />
+                  </div>
+                  <h3 className="text-2xl font-bold mb-1">{songInfo.title}</h3>
+                  <p className="text-gray-300 mb-6 opacity-80">{songInfo.artist}</p>
                 </motion.div>
                 
                 {/* YouTube Music style lyrics display */}
                 {lyrics && lyrics.length > 0 ? (
-                  <div className="mt-4 text-left max-h-28 overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
+                  <div className="mt-6 text-left max-h-36 overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent px-2">
                     {lyrics.map((line, index) => {
                       const isActive = currentTime >= line.startTime && currentTime <= line.endTime;
                       return (
                         <motion.div
                           key={index}
-                          className={`py-1 px-2 my-1 rounded transition-all ${
-                            isActive ? 'bg-white/20 text-white font-bold' : 'text-gray-300'
+                          className={`py-1.5 px-3 my-1.5 rounded-lg transition-all ${
+                            isActive ? 'bg-white/20 text-white font-bold' : 'text-gray-300/80'
                           }`}
                           initial={{ opacity: 0.7 }}
                           animate={{ 
@@ -283,16 +294,16 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
                   </div>
                 ) : (
                   // Audio visualizer bars (animated) as fallback when no lyrics
-                  <div className="flex items-end justify-center h-8 gap-1 mt-4">
-                    {[...Array(16)].map((_, i) => (
+                  <div className="flex items-end justify-center h-12 gap-1 mt-4">
+                    {[...Array(20)].map((_, i) => (
                       <motion.div
                         key={i}
-                        className="w-1 bg-white bg-opacity-80 rounded-full"
+                        className="w-1.5 bg-white bg-opacity-80 rounded-full"
                         animate={{
                           height: [
-                            Math.random() * 12 + 5,
-                            Math.random() * 30 + 5,
-                            Math.random() * 12 + 5
+                            Math.random() * 15 + 5,
+                            Math.random() * 35 + 10,
+                            Math.random() * 15 + 5
                           ]
                         }}
                         transition={{
@@ -311,20 +322,21 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
           
           {/* Loading overlay */}
           {isLoading && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-sm">
               <div className="text-white text-center">
-                <Loader className="w-10 h-10 mx-auto mb-2 animate-spin" />
-                <p>Loading song data...</p>
+                <Loader className="w-12 h-12 mx-auto mb-3 animate-spin" />
+                <p className="font-medium">Loading song data...</p>
               </div>
             </div>
           )}
           
           {/* Error overlay */}
           {loadError && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center bg-red-900 bg-opacity-50">
-              <div className="text-white text-center p-4">
-                <p className="font-bold mb-2">Error</p>
-                <p>{loadError}</p>
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-red-900/80 backdrop-blur-sm">
+              <div className="text-white text-center p-6 max-w-md rounded-xl bg-black/20">
+                <AlertTriangle className="w-10 h-10 mx-auto mb-3" />
+                <p className="font-bold text-xl mb-2">Error</p>
+                <p className="opacity-90">{loadError}</p>
               </div>
             </div>
           )}
@@ -343,8 +355,8 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
         </div>
       </div>
       
-      <div className={`rounded-xl p-4 ${
-        isDark ? 'bg-[#1a1b26]' : 'bg-white/80 backdrop-blur-sm'
+      <div className={`rounded-xl p-5 ${
+        isDark ? 'bg-[#1E1E2E]' : 'bg-white/90 backdrop-blur-sm'
       }`}>
         <div className="flex justify-between items-center">
           <motion.div 
@@ -352,28 +364,40 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
             animate={{ opacity: 1, y: 0 }}
             className="flex items-center gap-3"
           >
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-              isDark ? 'bg-[#7aa2f7]/20' : 'bg-purple-100'
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+              isDark ? 'bg-[#7aa2f7]/10 border border-[#7aa2f7]/20' : 'bg-purple-100'
             }`}>
               <Music className={isDark ? 'text-[#7aa2f7]' : 'text-purple-500'} />
             </div>
             <div>
-              <h3 className="font-bold">{songInfo.title}</h3>
+              <h3 className={`font-bold ${isDark ? 'text-white' : 'text-gray-800'}`}>{songInfo.title}</h3>
               <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{songInfo.artist}</p>
             </div>
           </motion.div>
           
-          <div className="flex items-center gap-2">
-            <Clock className={`w-4 h-4 ${isDark ? 'text-gray-400' : 'text-gray-600'}`} />
-            <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+            isDark ? 'bg-[#414868]/20' : 'bg-purple-50'
+          }`}>
+            <Clock className={`w-4 h-4 ${isDark ? 'text-gray-400' : 'text-purple-500'}`} />
+            <span className={`text-sm font-mono ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
               {formatTime(currentTime)} / {formatTime(duration)}
             </span>
           </div>
         </div>
         
-        <div className="mt-4 flex items-center gap-2 p-3 rounded-lg text-sm">
-          <Info className={`w-4 h-4 flex-shrink-0 ${isDark ? 'text-[#7aa2f7]' : 'text-purple-600'}`} />
-          <p className={isDark ? 'text-gray-300' : 'text-gray-700'}>
+        <div className={`mt-4 flex items-center gap-3 p-4 rounded-xl text-sm ${
+          isDark 
+            ? isLoading ? 'bg-[#414868]/20' : 'bg-[#2D2D40]/40' 
+            : isLoading ? 'bg-indigo-50' : 'bg-purple-50'
+        }`}>
+          {isLoading ? (
+            <div className="w-6 h-6 flex-shrink-0">
+              <Loader className={`w-6 h-6 animate-spin ${isDark ? 'text-[#7aa2f7]' : 'text-purple-600'}`} />
+            </div>
+          ) : (
+            <Info className={`w-5 h-5 flex-shrink-0 ${isDark ? 'text-[#7aa2f7]' : 'text-purple-600'}`} />
+          )}
+          <p className={`${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
             {isLoading 
               ? "Loading lyrics for typing practice..." 
               : "Lyrics are now ready! Click in the typing area and start typing along with the song."}

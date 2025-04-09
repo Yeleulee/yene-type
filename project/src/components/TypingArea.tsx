@@ -252,24 +252,37 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
   return (
     <motion.div 
       className={`w-full h-full flex flex-col gap-4 p-6 rounded-xl cursor-text transition-all ${
-        isDark ? 'bg-[#24283b] shadow-lg shadow-[#1a1b26]/50' : 'bg-white/80 backdrop-blur-sm shadow-xl shadow-purple-500/10'
+        isDark ? 'bg-[#1E1E2E] shadow-lg shadow-[#1a1b26]/50' : 'bg-white/90 backdrop-blur-sm shadow-xl shadow-purple-500/10'
       }`}
       onClick={handleFocus}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.2 }}
     >
-      <div className="flex items-center justify-between mb-2">
-        <h3 className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-800'}`}>
-          Yene Type
-        </h3>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <span className={`text-xl font-extrabold bg-clip-text ${
+            isDark 
+              ? 'text-transparent bg-gradient-to-r from-[#7aa2f7] to-[#bb9af7]' 
+              : 'text-transparent bg-gradient-to-r from-purple-600 to-indigo-600'
+          }`}>
+            Yene Type
+          </span>
+          <span className={`px-2 py-0.5 text-xs rounded-full ${
+            isDark ? 'bg-[#414868] text-[#c0caf5]' : 'bg-purple-100 text-purple-800'
+          }`}>
+            v1.0
+          </span>
+        </div>
         <div className="flex items-center gap-2">
           <motion.button 
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleReset}
-            className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm ${
-              isDark ? 'bg-[#1a1b26] hover:bg-[#414868]' : 'bg-purple-50 hover:bg-purple-100'
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-sm ${
+              isDark 
+                ? 'bg-[#1a1b26] hover:bg-[#414868] text-[#c0caf5]' 
+                : 'bg-purple-50 hover:bg-purple-100 text-purple-700'
             }`}
             title="Reset typing test"
           >
@@ -281,8 +294,10 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setShowStats(!showStats)}
-            className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm ${
-              isDark ? 'bg-[#1a1b26] hover:bg-[#414868]' : 'bg-purple-50 hover:bg-purple-100'
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-sm ${
+              isDark 
+                ? 'bg-[#1a1b26] hover:bg-[#414868] text-[#c0caf5]'
+                : 'bg-purple-50 hover:bg-purple-100 text-purple-700'
             }`}
           >
             Stats
@@ -299,34 +314,50 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
-            <div className="grid grid-cols-4 gap-3 mb-4">
-              <div className={`flex flex-col items-center p-3 rounded-lg ${
-                isDark ? 'bg-[#1a1b26]' : 'bg-purple-50'
+            <div className="grid grid-cols-4 gap-3 mb-5">
+              <div className={`flex flex-col items-center p-3 rounded-xl ${
+                isDark ? 'bg-[#1a1b26]' : 'bg-purple-50/80'
               }`}>
-                <Keyboard className={isDark ? 'text-[#7aa2f7] mb-1' : 'text-purple-500 mb-1'} size={18} />
+                <div className={`w-9 h-9 flex items-center justify-center rounded-lg mb-2 ${
+                  isDark ? 'bg-[#414868]' : 'bg-white'
+                }`}>
+                  <Keyboard className={isDark ? 'text-[#7aa2f7]' : 'text-purple-500'} size={18} />
+                </div>
                 <p className="text-2xl font-mono font-bold">{wpm}</p>
-                <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>WPM</p>
+                <p className={`text-xs font-medium uppercase tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>WPM</p>
               </div>
-              <div className={`flex flex-col items-center p-3 rounded-lg ${
-                isDark ? 'bg-[#1a1b26]' : 'bg-purple-50'
+              <div className={`flex flex-col items-center p-3 rounded-xl ${
+                isDark ? 'bg-[#1a1b26]' : 'bg-purple-50/80'
               }`}>
-                <Mic className={isDark ? 'text-[#bb9af7] mb-1' : 'text-purple-500 mb-1'} size={18} />
+                <div className={`w-9 h-9 flex items-center justify-center rounded-lg mb-2 ${
+                  isDark ? 'bg-[#414868]' : 'bg-white'
+                }`}>
+                  <Mic className={isDark ? 'text-[#bb9af7]' : 'text-purple-500'} size={18} />
+                </div>
                 <p className="text-2xl font-mono font-bold">{accuracy}%</p>
-                <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Accuracy</p>
+                <p className={`text-xs font-medium uppercase tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Accuracy</p>
               </div>
-              <div className={`flex flex-col items-center p-3 rounded-lg ${
-                isDark ? 'bg-[#1a1b26]' : 'bg-purple-50'
+              <div className={`flex flex-col items-center p-3 rounded-xl ${
+                isDark ? 'bg-[#1a1b26]' : 'bg-purple-50/80'
               }`}>
-                <Headphones className={isDark ? 'text-[#7dcfff] mb-1' : 'text-purple-500 mb-1'} size={18} />
+                <div className={`w-9 h-9 flex items-center justify-center rounded-lg mb-2 ${
+                  isDark ? 'bg-[#414868]' : 'bg-white'
+                }`}>
+                  <Headphones className={isDark ? 'text-[#7dcfff]' : 'text-purple-500'} size={18} />
+                </div>
                 <p className="text-2xl font-mono font-bold">{errors}</p>
-                <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Errors</p>
+                <p className={`text-xs font-medium uppercase tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Errors</p>
               </div>
-              <div className={`flex flex-col items-center p-3 rounded-lg ${
-                isDark ? 'bg-[#1a1b26]' : 'bg-purple-50'
+              <div className={`flex flex-col items-center p-3 rounded-xl ${
+                isDark ? 'bg-[#1a1b26]' : 'bg-purple-50/80'
               }`}>
-                <Award className={isDark ? 'text-[#e0af68] mb-1' : 'text-purple-500 mb-1'} size={18} />
+                <div className={`w-9 h-9 flex items-center justify-center rounded-lg mb-2 ${
+                  isDark ? 'bg-[#414868]' : 'bg-white'
+                }`}>
+                  <Award className={isDark ? 'text-[#e0af68]' : 'text-purple-500'} size={18} />
+                </div>
                 <p className="text-2xl font-mono font-bold">{streakCount}</p>
-                <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Streak</p>
+                <p className={`text-xs font-medium uppercase tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Streak</p>
               </div>
             </div>
           </motion.div>
@@ -337,15 +368,15 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
         <motion.div 
           initial={{ opacity: 0, y: 5 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`flex items-center gap-2 p-3 rounded-lg text-sm mb-2 ${
-            isDark ? 'bg-[#414868]/30 text-[#7aa2f7]' : 'bg-purple-100/50 text-purple-700'
+          className={`flex items-center gap-2 p-4 rounded-xl text-sm mb-4 ${
+            isDark ? 'bg-[#2D2D40]/60 text-[#7aa2f7]' : 'bg-purple-100/50 text-purple-700'
           }`}
         >
-          <Rocket size={16} />
-          <p>Type the text as it appears. The highlighted character shows your current position.</p>
+          <Rocket size={18} />
+          <p className="font-medium">Type the text as it appears. The highlighted character shows your current position.</p>
           <button 
             onClick={() => setShowTip(false)} 
-            className={`ml-auto px-2 py-1 rounded ${
+            className={`ml-auto p-1.5 rounded-lg hover:bg-opacity-80 transition-all ${
               isDark ? 'hover:bg-[#1a1b26]' : 'hover:bg-white/50'
             }`}
           >
@@ -354,33 +385,47 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
         </motion.div>
       )}
 
-      {/* Monkey Type style typing area */}
-      <div className={`rounded-lg p-5 mb-4 overflow-hidden ${
-        isDark ? 'bg-[#1a1b26]/80' : 'bg-purple-50/80'
+      {/* Enhanced Typing Area */}
+      <div className={`rounded-xl px-6 py-8 mb-6 overflow-hidden ${
+        isDark ? 'bg-[#16161e]/90 shadow-inner shadow-black/20' : 'bg-purple-50/90 shadow-inner shadow-purple-500/5'
       }`}>
         {!isPlaying && !allLyrics ? (
-          <div className="text-center py-8">
-            <Music className={`w-12 h-12 mx-auto mb-3 ${isDark ? 'text-[#7aa2f7]/50' : 'text-purple-500/50'}`} />
-            <p className={`font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-              Play a song to start typing
+          <div className="text-center py-12 px-4">
+            <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
+              isDark ? 'bg-[#1a1b26]' : 'bg-white'
+            }`}>
+              <Music className={`${isDark ? 'text-[#7aa2f7]' : 'text-purple-500'}`} size={24} />
+            </div>
+            <h3 className={`text-xl font-bold mb-2 ${isDark ? 'text-white' : 'text-gray-800'}`}>
+              Ready to Type
+            </h3>
+            <p className={`font-medium ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+              Play a song to start your typing practice
             </p>
           </div>
         ) : isPlaying && !allLyrics ? (
-          <div className="text-center py-8">
-            <AlertTriangle className={`w-12 h-12 mx-auto mb-3 ${isDark ? 'text-yellow-500/70' : 'text-yellow-500/70'}`} />
-            <p className={`font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-              Waiting for lyrics to load...
+          <div className="text-center py-12 px-4">
+            <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
+              isDark ? 'bg-[#1a1b26]' : 'bg-white'
+            }`}>
+              <AlertTriangle className={`${isDark ? 'text-yellow-500' : 'text-yellow-500'}`} size={24} />
+            </div>
+            <h3 className={`text-xl font-bold mb-2 ${isDark ? 'text-white' : 'text-gray-800'}`}>
+              Loading Lyrics
+            </h3>
+            <p className={`font-medium ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+              Preparing your typing challenge...
             </p>
           </div>
         ) : (
           <div className="flex flex-col items-center">
-            <div className="w-full overflow-hidden py-4 px-2 relative">
+            <div className="w-full overflow-hidden py-6 px-3 relative">
               {renderMonkeyTypeLyrics()}
               
-              {/* Cursor effect */}
+              {/* Enhanced cursor effect */}
               {typedText.length < allLyrics.length && (
                 <motion.div 
-                  className={`absolute bottom-0 w-[2px] h-6 ${isDark ? 'bg-[#7aa2f7]' : 'bg-purple-600'}`}
+                  className={`absolute bottom-0 w-[2px] h-7 ${isDark ? 'bg-[#7aa2f7]' : 'bg-purple-600'}`}
                   style={{
                     left: `calc(${typedText.length * 10}px + 0.5rem)`,
                     transform: 'translateX(-50%)'
@@ -391,11 +436,21 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
               )}
             </div>
 
-            <div className="mt-4 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 relative">
-              <div
-                className={`h-2.5 rounded-full ${isDark ? 'bg-[#7aa2f7]' : 'bg-purple-600'}`}
-                style={{ width: `${allLyrics ? (typedText.length / allLyrics.length) * 100 : 0}%` }}
-              ></div>
+            <div className="mt-6 w-full max-w-3xl">
+              <div className="flex justify-between text-xs mb-2">
+                <span className={isDark ? 'text-gray-500' : 'text-gray-500'}>Progress</span>
+                <span className={`font-medium ${isDark ? 'text-[#7aa2f7]' : 'text-purple-600'}`}>
+                  {allLyrics ? Math.round((typedText.length / allLyrics.length) * 100) : 0}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 dark:bg-gray-700/30 rounded-full h-1.5 relative overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${allLyrics ? (typedText.length / allLyrics.length) * 100 : 0}%` }}
+                  transition={{ duration: 0.2 }}
+                  className={`h-1.5 rounded-full ${isDark ? 'bg-gradient-to-r from-[#7aa2f7] to-[#bb9af7]' : 'bg-gradient-to-r from-purple-600 to-indigo-500'}`}
+                ></motion.div>
+              </div>
             </div>
           </div>
         )}
@@ -421,7 +476,11 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
                 : 'Play a song to start typing'}
             </p>
           ) : allLyrics && !typedText.length ? (
-            <p className={`text-center ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+            <p className={`text-center font-medium px-4 py-2 rounded-lg ${
+              isDark 
+                ? 'text-[#c0caf5] bg-[#414868]/30 border border-[#414868]/50' 
+                : 'text-purple-700 bg-purple-50 border border-purple-100'
+            }`}>
               Click anywhere to start typing
             </p>
           ) : null}
@@ -432,22 +491,29 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`text-center p-4 rounded-lg ${
-            isDark ? 'bg-[#414868]/50 border border-[#7aa2f7]' : 'bg-purple-100'
+          className={`text-center py-6 px-8 rounded-xl ${
+            isDark 
+              ? 'bg-gradient-to-br from-[#414868]/60 to-[#1a1b26] border border-[#7aa2f7]/30' 
+              : 'bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-100'
           }`}
         >
-          <h3 className="text-xl font-bold mb-2">🎵 Perfect Performance! 🎵</h3>
-          <p className={`${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
-            You've completed typing with {wpm} WPM and {accuracy}% accuracy!
+          <div className={`w-16 h-16 mx-auto mb-3 rounded-full flex items-center justify-center ${
+            isDark ? 'bg-[#7aa2f7]/20' : 'bg-white'
+          }`}>
+            <Award className={isDark ? 'text-[#e0af68]' : 'text-purple-500'} size={24} />
+          </div>
+          <h3 className={`text-xl font-bold mb-2 ${isDark ? 'text-white' : 'text-gray-800'}`}>🎵 Perfect Performance! 🎵</h3>
+          <p className={`mb-4 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+            You've completed typing with <span className="font-bold">{wpm} WPM</span> and <span className="font-bold">{accuracy}%</span> accuracy!
           </p>
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleReset}
-            className={`mt-3 px-4 py-2 rounded-lg font-medium ${
+            className={`px-6 py-2.5 rounded-lg font-medium ${
               isDark 
-                ? 'bg-[#7aa2f7] text-[#1a1b26] hover:bg-[#7aa2f7]/90' 
-                : 'bg-purple-600 text-white hover:bg-purple-700'
+                ? 'bg-gradient-to-r from-[#7aa2f7] to-[#bb9af7] text-[#1a1b26] hover:opacity-90' 
+                : 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:opacity-90'
             }`}
           >
             Try again

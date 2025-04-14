@@ -145,13 +145,13 @@ export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
       const results = await searchYouTubeVideos(query);
       setResults(results);
       setShowPopular(false);
-    } catch (error) {
+      } catch (error) {
       console.error('Search error:', error);
       setError('Failed to search for videos. Please try again.');
-      setResults([]);
+        setResults([]);
       setShowPopular(false);
     } finally {
-      setIsLoading(false);
+        setIsLoading(false);
     }
   };
   
@@ -196,12 +196,12 @@ export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
       saveToHistory(selectedVideo);
     } else if (videoId) {
       // Create a basic result if we don't have the data
-      saveToHistory({
-        id: videoId,
+    saveToHistory({
+      id: videoId,
         title: title || 'Unknown Song',
         artist: 'Unknown Artist',
-        thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
-      });
+      thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
+    });
     }
   };
   

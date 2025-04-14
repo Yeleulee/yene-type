@@ -15,6 +15,13 @@ import {
   BookOpen
 } from 'lucide-react';
 
+// Helper function to format time in MM:SS format
+const formatTime = (seconds: number): string => {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+};
+
 interface TypingAreaProps {
   isDark?: boolean;
 }
@@ -29,6 +36,9 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
     isPlaying,
     currentLyric,
     lyrics,
+    currentTime,
+    videoLoaded,
+    activeLyricIndex,
     setTypedText,
     setWPM,
     setAccuracy,
@@ -52,6 +62,7 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
   const syncStatusRef = useRef<'pending' | 'synced' | 'failed'>('pending');
   const syncAttemptTimeRef = useRef<number | null>(null);
   const [showDebug, setShowDebug] = useState(false);
+  const [activeLineIndex, setActiveLineIndex] = useState(-1);
 
   // Enhanced focus mechanism with debounce to prevent excessive focus attempts
   const focusTextArea = useCallback(() => {
@@ -294,83 +305,225 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
     focusTextArea();
   };
 
-  // Memory-efficient word-by-word rendering approach
+  // Highlight the current line based on time synchronization
+  useEffect(() => {
+    if (currentLyric && lyrics.length > 0) {
+      // Find the corresponding index in the lyrics array
+      const index = lyrics.findIndex(lyric => lyric.text === currentLyric.text);
+      if (index !== -1 && index !== activeLineIndex) {
+        setActiveLineIndex(index);
+        
+        // Scroll to the current lyric if we have a reference to the container
+        if (lyricsRef.current) {
+          const lyricElements = lyricsRef.current.querySelectorAll('.lyric-line');
+          if (lyricElements[index]) {
+            lyricElements[index].scrollIntoView({
+              behavior: 'smooth',
+              block: 'center'
+            });
+          }
+        }
+      }
+    }
+  }, [currentLyric, lyrics, activeLineIndex]);
+  
+  // Sync with currentTime changes
+  useEffect(() => {
+    if (currentTime > 0 && lyrics.length > 0 && activeLyricIndex >= 0) {
+      // We have a valid time and active lyric - ensure the typing interface is synced
+      const lyric = lyrics[activeLyricIndex];
+      if (lyric && lyric.text) {
+        // Focus the textarea if we're now active
+        if (!hasAttemptedToFocus.current && isPlaying) {
+          focusTextArea();
+          hasAttemptedToFocus.current = true;
+        }
+      }
+    }
+  }, [currentTime, activeLyricIndex, lyrics, isPlaying, focusTextArea]);
+
+  // When video loads, reset and prepare for typing
+  useEffect(() => {
+    if (videoLoaded) {
+      reset();
+      setStartTime(null);
+      setIsComplete(false);
+      setCurrentPosition(0);
+      hasAttemptedToFocus.current = false;
+      
+      // Focus the text area when the video is loaded
+      focusTextArea();
+    }
+  }, [videoLoaded, reset, focusTextArea]);
+
+  // Modified renderTypingText to highlight the current line based on time
   const renderTypingText = () => {
-    if (!allLyrics || allLyrics.length === 0) {
+    if (!text || text.length === 0) {
       return (
-        <div className="font-mono text-xl text-center py-4">
-          <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>
-            {isPlaying ? 'Waiting for lyrics...' : 'Play a song to see lyrics here'}
-          </span>
+        <div className="flex flex-col items-center justify-center py-12">
+          <BookOpen className={`w-12 h-12 ${isDark ? 'text-indigo-400' : 'text-indigo-600'} opacity-50 mb-4`} />
+          <p className={`text-lg font-medium ${isDark ? 'text-white' : 'text-gray-800'}`}>
+            Select a song to start typing
+          </p>
+          <p className={`text-sm mt-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+            Search for a song above and practice typing with lyrics
+          </p>
         </div>
       );
     }
     
-    // Split lyrics into words for better visualization
-    const words = allLyrics.split(' ');
-    const wordElements = [];
-    let currentCharIndex = 0;
-    
-    // Process words in chunks for better performance with long texts
-    for (let i = 0; i < words.length; i++) {
-      const word = words[i];
-      const wordStart = currentCharIndex;
-      const wordEnd = wordStart + word.length;
-      const isCurrentWord = typedText.length >= wordStart && typedText.length <= wordEnd;
-      
-      const charElements = [];
-      for (let j = 0; j < word.length; j++) {
-        const char = word[j];
-        const absoluteIndex = wordStart + j;
-        let className = isDark ? 'text-gray-500' : 'text-gray-400';
-        
-        if (absoluteIndex < typedText.length) {
-          // Character has been typed
-          className = typedText[absoluteIndex] === char 
-            ? (isDark ? 'text-emerald-400' : 'text-teal-600') // Correct
-            : (isDark ? 'text-rose-400 bg-rose-900/20' : 'text-rose-600 bg-rose-100'); // Wrong
-        } else if (absoluteIndex === typedText.length) {
-          // Current character to type (cursor position)
-          className = isDark ? 'text-white bg-indigo-500/50' : 'text-black bg-indigo-200';
-        }
-        
-        charElements.push(
-          <span key={`char-${absoluteIndex}`} className={className}>
-            {char}
-          </span>
-        );
-      }
-      
-      wordElements.push(
-        <span 
-          key={`word-${i}`} 
-          className={`inline-block rounded px-0.5 py-0.5 ${
-            isCurrentWord ? (isDark ? 'bg-indigo-500/20' : 'bg-indigo-100/70') : ''
-          }`}
-        >
-          {charElements}
-        </span>
+    if (isComplete) {
+      return (
+        <div className="flex flex-col items-center justify-center py-12">
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', duration: 0.5 }}
+          >
+            <div className="flex flex-col items-center">
+              <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-4 ${
+                isDark ? 'bg-indigo-500/20' : 'bg-indigo-100'
+              }`}>
+                <Check className={`w-10 h-10 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} />
+              </div>
+              <h3 className={`text-2xl font-bold mb-1 ${isDark ? 'text-white' : 'text-gray-800'}`}>
+                {wpm >= 80 ? 'Amazing!' : wpm >= 60 ? 'Great job!' : 'Completed!'}
+              </h3>
+              <p className={`text-base ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                You've finished typing this song!
+              </p>
+              
+              <div className="mt-6 grid grid-cols-3 gap-4 w-full max-w-md">
+                <div className={`p-4 rounded-lg ${
+                  isDark ? 'bg-slate-800' : 'bg-white'
+                } flex flex-col items-center`}>
+                  <BarChart className={`w-5 h-5 mb-1 ${
+                    isDark ? 'text-indigo-400' : 'text-indigo-600'
+                  }`} />
+                  <span className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-800'}`}>
+                    {wpm}
+                  </span>
+                  <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    WPM
+                  </span>
+                </div>
+                
+                <div className={`p-4 rounded-lg ${
+                  isDark ? 'bg-slate-800' : 'bg-white'
+                } flex flex-col items-center`}>
+                  <Award className={`w-5 h-5 mb-1 ${
+                    accuracy > 95 
+                      ? 'text-green-500' 
+                      : accuracy > 85 
+                        ? 'text-yellow-500' 
+                        : 'text-red-500'
+                  }`} />
+                  <span className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-800'}`}>
+                    {accuracy.toFixed(1)}%
+                  </span>
+                  <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Accuracy
+                  </span>
+                </div>
+                
+                <div className={`p-4 rounded-lg ${
+                  isDark ? 'bg-slate-800' : 'bg-white'
+                } flex flex-col items-center`}>
+                  <AlertTriangle className={`w-5 h-5 mb-1 ${
+                    errors < 5 
+                      ? 'text-green-500' 
+                      : errors < 15 
+                        ? 'text-yellow-500' 
+                        : 'text-red-500'
+                  }`} />
+                  <span className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-800'}`}>
+                    {errors}
+                  </span>
+                  <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Errors
+                  </span>
+                </div>
+              </div>
+              
+              <button
+                onClick={handleReset}
+                className={`mt-6 px-6 py-3 rounded-lg flex items-center gap-2 ${
+                  isDark 
+                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white' 
+                    : 'bg-indigo-500 hover:bg-indigo-600 text-white'
+                } transition-colors`}
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>Try Again</span>
+              </button>
+            </div>
+          </motion.div>
+        </div>
       );
-      
-      // Add space between words
-      if (i < words.length - 1) {
-        currentCharIndex += word.length + 1; // +1 for the space
-        wordElements.push(
-          <span key={`space-${i}`} className={isDark ? 'text-gray-600' : 'text-gray-400'}>
-            {' '}
-          </span>
-        );
-      } else {
-        currentCharIndex += word.length;
-      }
     }
     
+    // Render the lyrics with time-based highlighting
     return (
-      <div 
-        ref={lyricsRef}
-        className="font-mono text-xl whitespace-pre-wrap overflow-x-auto py-3 px-2 rounded-lg"
-      >
-        {wordElements}
+      <div className="relative overflow-hidden px-4">
+        {/* Lyrics display */}
+        <div
+          ref={lyricsRef}
+          className={`w-full py-3 transition-all duration-300 overflow-y-auto max-h-[300px] ${
+            isDark ? 'scrollbar-dark' : 'scrollbar-light'
+          }`}
+          style={{ scrollBehavior: 'smooth' }}
+        >
+          {lyrics.map((lyric, idx) => (
+            <div
+              key={idx}
+              className={`lyric-line mb-4 p-2 rounded-md transition-all duration-300 ${
+                activeLyricIndex === idx 
+                  ? isDark 
+                    ? 'bg-indigo-500/20 border-l-4 border-indigo-500' 
+                    : 'bg-indigo-100/80 border-l-4 border-indigo-500'
+                  : 'border-l-4 border-transparent'
+              }`}
+            >
+              <div className="flex items-center mb-1">
+                <span className={`text-xs font-mono mr-2 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>
+                  {formatTime(lyric.startTime || 0)}
+                </span>
+              </div>
+              <p className={`text-lg ${isDark ? 'text-white' : 'text-gray-800'} ${
+                // Mark this line as completed if it's before our current active line
+                idx < activeLyricIndex ? 'opacity-60' : 'opacity-100'
+              }`}>
+                {lyric.text}
+              </p>
+            </div>
+          ))}
+        </div>
+        
+        {/* Typing area */}
+        <div className={`relative mt-4 ${isDark ? 'typing-area-dark' : 'typing-area-light'}`}>
+          <textarea
+            ref={textareaRef}
+            value={typedText}
+            onChange={handleTyping}
+            onFocus={handleFocus}
+            className={`w-full h-24 p-4 rounded-lg resize-none focus:ring-2 focus:ring-opacity-50 ${
+              isDark 
+                ? 'bg-slate-800 text-white border-slate-700 focus:ring-indigo-500' 
+                : 'bg-white text-gray-800 border-gray-200 focus:ring-indigo-400'
+            } border transition-all`}
+            placeholder="Type the lyrics here..."
+            aria-label="Type the lyrics here"
+          />
+          
+          {showTip && !typedText && (
+            <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none ${
+              isDark ? 'text-gray-400' : 'text-gray-500'
+            }`}>
+              <Keyboard className="w-6 h-6 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">Click here and start typing to the rhythm</p>
+            </div>
+          )}
+        </div>
       </div>
     );
   };

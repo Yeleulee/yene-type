@@ -98,6 +98,9 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
         // Update current time for better synchronization
         if (data.event === 'onTimeUpdate') {
           setCurrentTime(data.info.currentTime || 0);
+          
+          // Update the current time in the typing store for synchronization
+          useTypingStore.getState().updateCurrentTime(data.info.currentTime || 0);
         }
         
         // Handle duration changes
@@ -112,6 +115,31 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, []);
+
+  // Poll for current time updates to ensure synchronization
+  useEffect(() => {
+    const syncTimer = setInterval(() => {
+      if (!isLoading && iframeRef.current && initialLoadRef.current) {
+        try {
+          // Use the postMessage API to get the current time from the player
+          iframeRef.current.contentWindow?.postMessage(
+            JSON.stringify({
+              event: 'command',
+              func: 'getCurrentTime',
+            }),
+            '*'
+          );
+          
+          // Also update the typing store with the current time
+          useTypingStore.getState().updateCurrentTime(currentTime);
+        } catch (e) {
+          console.warn('Error syncing time:', e);
+        }
+      }
+    }, 100); // Poll more frequently for better sync
+    
+    return () => clearInterval(syncTimer);
+  }, [currentTime, isLoading]);
 
   // Function to load lyrics with better error handling
   const loadLyrics = useCallback(async (videoId: string) => {
@@ -172,29 +200,20 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
     // But we can show the controls and let users handle it there
   }, []);
 
-  // Handle iframe load
+  // Handle iframe load with improved synchronization
   const handleIframeLoad = useCallback(() => {
     console.log("YouTubePlayer: iframe loaded");
     setIsLoading(false);
     setIsPlaying(true);
     useTypingStore.getState().setIsPlaying(true);
     
-    // Set up timer to check progress
-    const progressTimer = setInterval(() => {
-      if (iframeRef.current && initialLoadRef.current) {
-        // Send message to iframe to update current time
-        try {
-          iframeRef.current.contentWindow?.postMessage(
-            JSON.stringify({ event: 'command', func: 'getCurrentTime' }),
-            'https://www.youtube.com'
-          );
-        } catch (e) {
-          // Ignore errors
-        }
-      }
-    }, 500);
+    // Reset current time and force sync when video loads
+    setCurrentTime(0);
+    useTypingStore.getState().updateCurrentTime(0);
     
-    return () => clearInterval(progressTimer);
+    // Notify typing store that video has loaded
+    useTypingStore.getState().setVideoLoaded(true);
+    
   }, [setIsPlaying]);
   
   return (
@@ -205,8 +224,8 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
     >
-      {/* Player Container */}
-      <div className="relative aspect-video w-full bg-black" ref={playerContainerRef}>
+      {/* Player Container with fixed aspect ratio */}
+      <div className="relative aspect-video w-full bg-black overflow-hidden" ref={playerContainerRef}>
         {/* Direct YouTube iFrame */}
         <iframe
           ref={iframeRef}
@@ -218,8 +237,8 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
           onLoad={handleIframeLoad}
         ></iframe>
         
-        {/* Progress indicator */}
-        <div className="absolute bottom-0 left-0 right-0 h-1 z-30 bg-black/40">
+        {/* Progress indicator - stay on top of other elements */}
+        <div className="absolute bottom-0 left-0 right-0 h-1.5 z-10 bg-black/40 pointer-events-none">
           <div 
             className="h-full bg-indigo-500"
             style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
@@ -228,22 +247,22 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
         
         {/* Audio Only Mode Overlay */}
         {isAudioOnly && (
-          <div className="absolute inset-0 z-10 bg-gradient-to-b from-indigo-900 to-slate-900 flex flex-col items-center justify-center">
+          <div className="absolute inset-0 z-20 bg-gradient-to-b from-indigo-900 to-slate-900 flex flex-col items-center justify-center">
             <div 
-              className={`w-28 h-28 rounded-full flex items-center justify-center mb-4 ${
-                isDark ? 'bg-indigo-500/20' : 'bg-indigo-100'
+              className={`w-24 h-24 rounded-full flex items-center justify-center mb-3 ${
+                isDark ? 'bg-indigo-500/30' : 'bg-indigo-100'
               }`}
             >
-              <Music className="text-white w-14 h-14" />
+              <Music className="text-white w-12 h-12" />
             </div>
             
-            <div className="text-center">
-              <h3 className="text-2xl font-bold text-white mb-1">{songInfo.title}</h3>
-              <p className="text-indigo-200 mb-4">{songInfo.artist}</p>
+            <div className="text-center px-4">
+              <h3 className="text-xl font-bold text-white mb-1 line-clamp-1">{songInfo.title}</h3>
+              <p className="text-indigo-200 mb-4 line-clamp-1">{songInfo.artist}</p>
             </div>
             
             {/* Audio visualizer bars */}
-            <div className="flex items-end justify-center h-16 gap-0.5 mt-2">
+            <div className="flex items-end justify-center h-14 gap-0.5 mt-1 px-4">
               {[...Array(16)].map((_, i) => (
                 <motion.div
                   key={i}
@@ -264,80 +283,68 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
               ))}
             </div>
             
-            <div className="mt-6 text-center max-w-xl text-white font-medium">
-              <p className="text-lg">
+            <div className="mt-4 text-center max-w-xl text-white font-medium px-4">
+              <p className="text-sm">
                 {isPlaying ? "Music playing in audio-only mode" : "Press play to continue"}
               </p>
-              <p className="text-sm text-white/60 mt-2">
-                Current time: {formatTime(currentTime)} / {formatTime(duration)}
+              <p className="text-xs text-white/60 mt-1">
+                {formatTime(currentTime)} / {formatTime(duration)}
               </p>
             </div>
+            
+            {/* Return to video button */}
+            <button
+              onClick={toggleAudioOnly}
+              className="mt-6 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg flex items-center gap-2 transition-colors shadow-md backdrop-blur-sm"
+            >
+              <Youtube size={18} />
+              <span>Return to Video</span>
+            </button>
           </div>
         )}
         
-        {/* Controls Overlay */}
-        <div className={`absolute left-0 right-0 bottom-0 p-4 bg-gradient-to-t from-black/80 to-transparent 
-          flex items-center justify-between z-20 ${isAudioOnly ? 'opacity-0' : 'opacity-100'}`}
+        {/* Audio mode toggle button - positioned on the right */}
+        <div 
+          className={`absolute bottom-8 right-4 z-20 ${
+            isAudioOnly ? 'opacity-0 pointer-events-none' : 'opacity-100'
+          }`}
         >
-          <div className="flex items-center gap-2 text-white">
-            <button 
-              onClick={toggleAudioOnly}
-              className="p-1.5 rounded-full hover:bg-white/20 transition-colors"
-              title={isAudioOnly ? "Show video" : "Audio only mode"}
-            >
-              {isAudioOnly ? (
-                <Youtube className="w-5 h-5" />
-              ) : (
-                <Music className="w-5 h-5" />
-              )}
-            </button>
-            
-            <button 
-              onClick={toggleMute}
-              className="p-1.5 rounded-full hover:bg-white/20 transition-colors"
-              title={isMuted ? "Unmute" : "Mute"}
-            >
-              {isMuted ? (
-                <VolumeX className="w-5 h-5" />
-              ) : (
-                <Volume2 className="w-5 h-5" />
-              )}
-            </button>
-            
-            {/* Time display */}
-            <div className="ml-3 text-sm font-mono">
-              {formatTime(currentTime)} / {formatTime(duration)}
-            </div>
-          </div>
+          <button 
+            onClick={toggleAudioOnly}
+            className="p-2.5 rounded-full bg-black/60 hover:bg-black/80 transition-colors text-white backdrop-blur-sm shadow-md"
+            title="Switch to audio-only mode"
+          >
+            <Music className="w-5 h-5" />
+          </button>
         </div>
         
-        {/* Loading overlay */}
+        {/* Loading overlay - highest z-index */}
         {isLoading && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className="text-white text-center p-6 rounded-lg bg-black/40">
-              <div className="w-16 h-16 mx-auto relative mb-4">
-                <div className="animate-spin h-full w-full rounded-full border-4 border-indigo-400/20 border-t-indigo-400"></div>
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+            <div className="text-white text-center p-5 rounded-lg bg-black/60">
+              <div className="w-14 h-14 mx-auto relative mb-3">
+                <div className="animate-spin h-full w-full rounded-full border-3 border-indigo-400/20 border-t-indigo-400"></div>
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <Music className="text-indigo-400 w-6 h-6" />
+                  <Music className="text-indigo-400 w-5 h-5" />
                 </div>
               </div>
-              <p className="text-lg font-medium mb-1">Loading song data...</p>
-              <p className="text-sm text-slate-300 mb-4">This may take a moment</p>
+              <p className="text-base font-medium mb-1">Loading song...</p>
+              <p className="text-xs text-slate-300">This may take a moment</p>
             </div>
           </div>
         )}
         
-        {/* Error overlay */}
+        {/* Error overlay - highest z-index */}
         {loadError && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className="text-white text-center p-6 rounded-lg bg-black/40 max-w-md">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-rose-500/20 flex items-center justify-center">
-                <Info className="text-rose-400 w-8 h-8" />
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+            <div className="text-white text-center p-5 rounded-lg bg-black/60 max-w-md mx-4">
+              <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-rose-500/20 flex items-center justify-center">
+                <Info className="text-rose-400 w-7 h-7" />
               </div>
-              <p className="text-lg font-medium mb-3">{loadError}</p>
+              <p className="text-base font-medium mb-3">{loadError}</p>
               <button 
                 onClick={() => setLoadError(null)}
-                className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-medium transition-colors"
+                className="px-4 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-medium transition-colors"
               >
                 Try anyway
               </button>
@@ -348,18 +355,18 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       
       {/* Song Details */}
       <div className="p-4">
-        <div className="flex items-center gap-4 mb-3">
-          <div className={`w-12 h-12 rounded-lg flex-shrink-0 flex items-center justify-center ${
+        <div className="flex items-center gap-3 mb-3">
+          <div className={`w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center ${
             isDark ? 'bg-indigo-500/20' : 'bg-indigo-100'
           }`}>
-            <Music className={`${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} size={20} />
+            <Music className={`${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} size={18} />
           </div>
           
           <div className="overflow-hidden">
-            <h3 className={`font-bold text-lg truncate ${isDark ? 'text-white' : 'text-slate-800'}`}>
+            <h3 className={`font-bold text-base truncate ${isDark ? 'text-white' : 'text-slate-800'}`}>
               {songInfo.title}
             </h3>
-            <p className={`truncate ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+            <p className={`truncate text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
               {songInfo.artist}
             </p>
           </div>
@@ -379,24 +386,24 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
           </a>
         </div>
         
-        <div className={`p-4 rounded-lg text-sm ${
+        <div className={`p-3 rounded-lg text-sm ${
           isDark 
-            ? isLoading ? 'bg-slate-800/50' : 'bg-slate-800/50' 
-            : isLoading ? 'bg-indigo-50' : 'bg-slate-50'
+            ? 'bg-slate-800/50' 
+            : 'bg-slate-50'
         }`}>
           {isLoading ? (
-            <div className="flex items-center gap-3">
-              <Loader className={`w-5 h-5 animate-spin ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} />
-              <p className={isDark ? 'text-slate-300' : 'text-slate-700'}>
+            <div className="flex items-center gap-2">
+              <Loader className={`w-4 h-4 animate-spin ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} />
+              <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                 Loading lyrics for typing practice...
               </p>
             </div>
           ) : (
-            <div className="flex items-center gap-3">
-              <Info className={`w-5 h-5 flex-shrink-0 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} />
-              <p className={isDark ? 'text-slate-300' : 'text-slate-700'}>
+            <div className="flex items-center gap-2">
+              <Info className={`w-4 h-4 flex-shrink-0 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} />
+              <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                 {initialLoadRef.current
-                  ? "Lyrics are now ready! Click in the typing area below and start typing along with the song."
+                  ? "Lyrics ready! Start typing along with the song."
                   : "Waiting for lyrics to load. The song will play shortly."}
               </p>
             </div>

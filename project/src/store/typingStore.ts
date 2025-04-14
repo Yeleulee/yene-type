@@ -29,6 +29,9 @@ interface TypingState {
   lastCompletedLineIndex: number;
   practiceTexts: Record<Language, string[]>;
   highScores: HighScore[];
+  currentTime: number;
+  videoLoaded: boolean;
+  activeLyricIndex: number;
   setText: (text: string) => void;
   setTypedText: (text: string) => void;
   setWPM: (wpm: number) => void;
@@ -44,6 +47,9 @@ interface TypingState {
   addHighScore: (score: Omit<HighScore, 'date'>) => void;
   reset: () => void;
   changeSong: (newLyrics: LyricLine[], newText: string) => void;
+  updateCurrentTime: (time: number) => void;
+  setVideoLoaded: (loaded: boolean) => void;
+  getCurrentLyricByTime: (time: number) => void;
 }
 
 export const useTypingStore = create<TypingState>()(
@@ -84,6 +90,9 @@ export const useTypingStore = create<TypingState>()(
         ]
       },
       highScores: [],
+      currentTime: 0,
+      videoLoaded: false,
+      activeLyricIndex: -1,
       setText: (text) => set({ text }),
       setTypedText: (typedText) => set({ typedText }),
       setWPM: (wpm) => set({ wpm }),
@@ -95,6 +104,39 @@ export const useTypingStore = create<TypingState>()(
       setMode: (mode) => set({ mode }),
       setLyrics: (lyrics) => set({ lyrics }),
       setCurrentLyric: (currentLyric) => set({ currentLyric }),
+      updateCurrentTime: (time) => {
+        set({ currentTime: time });
+        get().getCurrentLyricByTime(time);
+      },
+      setVideoLoaded: (loaded) => set({ videoLoaded: loaded }),
+      getCurrentLyricByTime: (time) => {
+        const { lyrics } = get();
+        
+        // If no lyrics, exit early
+        if (!lyrics || lyrics.length === 0) return;
+        
+        // Find the lyric that corresponds to the current time
+        let activeIndex = -1;
+        
+        for (let i = 0; i < lyrics.length; i++) {
+          const lyric = lyrics[i];
+          const nextLyric = i < lyrics.length - 1 ? lyrics[i + 1] : null;
+          
+          // Check if the current time is between this lyric's start time and the next lyric's start time
+          if (lyric.startTime <= time && (!nextLyric || nextLyric.startTime > time || time <= lyric.endTime)) {
+            activeIndex = i;
+            break;
+          }
+        }
+        
+        // If we found a match and it's different from the current active lyric
+        if (activeIndex >= 0 && activeIndex !== get().activeLyricIndex) {
+          set({ 
+            activeLyricIndex: activeIndex,
+            currentLyric: lyrics[activeIndex]
+          });
+        }
+      },
       completeCurrentLine: () => {
         const state = get();
         if (state.currentLyric) {
@@ -119,7 +161,10 @@ export const useTypingStore = create<TypingState>()(
         errors: 0,
         isPlaying: false,
         lastCompletedLineIndex: -1,
-        currentLyric: null
+        currentLyric: null,
+        currentTime: 0,
+        activeLyricIndex: -1,
+        videoLoaded: false
       }),
       changeSong: (newLyrics, newText) => set({
         lyrics: newLyrics,
@@ -130,7 +175,10 @@ export const useTypingStore = create<TypingState>()(
         errors: 0,
         currentLyric: null,
         lastCompletedLineIndex: -1,
-        isPlaying: true
+        isPlaying: true,
+        currentTime: 0,
+        activeLyricIndex: -1,
+        videoLoaded: false
       })
     }),
     {

@@ -12,8 +12,11 @@ import {
   RefreshCw, 
   AlertTriangle, 
   Check,
-  BookOpen
+  BookOpen,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
+import '../styles/typing-animations.css'; // Import animations CSS
 
 // Helper function to format time in MM:SS format
 const formatTime = (seconds: number): string => {
@@ -21,6 +24,21 @@ const formatTime = (seconds: number): string => {
   const remainingSeconds = Math.floor(seconds % 60);
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 };
+
+// CSS for shake animation
+const shakeAnimationStyle = `
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-2px); }
+    75% { transform: translateX(2px); }
+  }
+  .shake-animation {
+    animation: shake 0.2s ease-in-out;
+  }
+  .cursor-highlight {
+    position: relative;
+  }
+`;
 
 interface TypingAreaProps {
   isDark?: boolean;
@@ -55,14 +73,29 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
   const [allLyrics, setAllLyrics] = useState('');
   const [currentPosition, setCurrentPosition] = useState(0);
   const [previousText, setPreviousText] = useState<string | null>(null);
+  const [enableErrorSound, setEnableErrorSound] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lyricsRef = useRef<HTMLDivElement>(null);
+  const errorSoundRef = useRef<HTMLAudioElement | null>(null);
   const hasAttemptedToFocus = useRef(false);
   const focusTimeoutRefs = useRef<number[]>([]);
   const syncStatusRef = useRef<'pending' | 'synced' | 'failed'>('pending');
   const syncAttemptTimeRef = useRef<number | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [activeLineIndex, setActiveLineIndex] = useState(-1);
+
+  // Create audio element for error sound
+  useEffect(() => {
+    // Create a simple beep sound for errors
+    errorSoundRef.current = new Audio("data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU" + Array(100).join("A"));
+    errorSoundRef.current.volume = 0.2; // Keep the volume low
+    
+    return () => {
+      if (errorSoundRef.current) {
+        errorSoundRef.current = null;
+      }
+    };
+  }, []);
 
   // Enhanced focus mechanism with debounce to prevent excessive focus attempts
   const focusTextArea = useCallback(() => {
@@ -261,6 +294,18 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
     // If this is the first character typed, set the start time
     if (typedText.length === 0 && newTypedText.length === 1) {
       setStartTime(Date.now());
+    }
+    
+    // Check if the new character is an error
+    const lastCharIndex = newTypedText.length - 1;
+    if (newTypedText.length > typedText.length && 
+        lastCharIndex < allLyrics.length && 
+        newTypedText[lastCharIndex] !== allLyrics[lastCharIndex]) {
+      // Play error sound if enabled
+      if (enableErrorSound && errorSoundRef.current) {
+        errorSoundRef.current.currentTime = 0;
+        errorSoundRef.current.play().catch(err => console.log("Error playing sound:", err));
+      }
     }
     
     setTypedText(newTypedText);
@@ -499,6 +544,106 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
           ))}
         </div>
         
+        {/* Interactive typing display showing character-by-character feedback */}
+        <div className={`mt-6 p-4 rounded-lg font-mono text-lg leading-relaxed ${
+          isDark ? 'bg-slate-800/70' : 'bg-white'
+        }`}>
+          {allLyrics && (
+            <div className="relative">
+              {/* Text content with character-by-character coloring */}
+              <div className="flex flex-wrap">
+                {allLyrics.split('').map((char, index) => {
+                  let status = 'waiting';
+                  // Character is waiting to be typed
+                  if (index >= typedText.length) {
+                    status = 'waiting';
+                  } 
+                  // Character was typed correctly
+                  else if (char === typedText[index]) {
+                    status = 'correct';
+                  } 
+                  // Character was typed incorrectly
+                  else {
+                    status = 'incorrect';
+                  }
+                  
+                  // Special styling for spaces and newlines
+                  const isSpace = char === ' ';
+                  
+                  // Current position highlighting
+                  const isCurrent = index === typedText.length;
+                  
+                  // Determine character display and style based on status
+                  return (
+                    <span 
+                      key={index}
+                      className={`
+                        relative 
+                        ${isSpace ? 'px-1' : 'px-0.5'}
+                        ${status === 'waiting' ? 
+                          (isDark ? 'text-gray-500' : 'text-gray-400') : 
+                          status === 'correct' ? 
+                            (isDark ? 'text-green-400' : 'text-green-600') : 
+                            (isDark ? 'text-red-400 bg-red-900/30' : 'text-red-600 bg-red-100')}
+                        ${status === 'incorrect' ? 'shake-animation' : ''}
+                        ${isCurrent ? 'cursor-highlight' : ''}
+                      `}
+                    >
+                      {isSpace ? '\u00A0' : char}
+                      {/* Current position cursor */}
+                      {isCurrent && (
+                        <motion.span 
+                          className={`absolute left-0 bottom-0 w-full h-[3px] ${isDark ? 'bg-indigo-500' : 'bg-indigo-500'}`}
+                          initial={{ opacity: 0.3 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ 
+                            repeat: Infinity, 
+                            repeatType: "reverse", 
+                            duration: 0.8 
+                          }}
+                        />
+                      )}
+                      {/* Error indicator */}
+                      {status === 'incorrect' && (
+                        <motion.span 
+                          className="absolute -bottom-4 left-1/2 transform -translate-x-1/2 text-xs text-red-500"
+                          initial={{ opacity: 0, y: -5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                        >
+                          ⬆
+                        </motion.span>
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+              
+              {/* Current line indicator - no need for inline styles anymore */}
+              {typedText.length > 0 && (
+                <></>
+              )}
+            </div>
+          )}
+          
+          {/* Show stats while typing */}
+          {startTime && !isComplete && (
+            <div className="flex justify-between mt-4 text-sm">
+              <div className={`px-3 py-1 rounded-lg ${isDark ? 'bg-slate-700/50' : 'bg-slate-100'}`}>
+                <span className={`font-bold ${isDark ? 'text-indigo-300' : 'text-indigo-600'}`}>{wpm}</span>
+                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}> WPM</span>
+              </div>
+              <div className={`px-3 py-1 rounded-lg ${isDark ? 'bg-slate-700/50' : 'bg-slate-100'}`}>
+                <span className={`font-bold ${isDark ? 'text-green-300' : 'text-green-600'}`}>{accuracy}%</span>
+                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}> Accuracy</span>
+              </div>
+              <div className={`px-3 py-1 rounded-lg ${isDark ? 'bg-slate-700/50' : 'bg-slate-100'}`}>
+                <span className={`font-bold ${isDark ? 'text-amber-300' : 'text-amber-600'}`}>{errors}</span>
+                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}> Errors</span>
+              </div>
+            </div>
+          )}
+        </div>
+        
         {/* Typing area */}
         <div className={`relative mt-4 ${isDark ? 'typing-area-dark' : 'typing-area-light'}`}>
           <textarea
@@ -608,6 +753,30 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
           <motion.button 
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
+            onClick={() => setEnableErrorSound(!enableErrorSound)}
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium ${
+              isDark 
+                ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' 
+                : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700'
+            }`}
+            title={enableErrorSound ? "Disable error sound" : "Enable error sound"}
+          >
+            {enableErrorSound ? (
+              <span className="flex items-center gap-1">
+                <Volume2 className="w-3.5 h-3.5" />
+                <span>Sound On</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1">
+                <VolumeX className="w-3.5 h-3.5" />
+                <span>Sound Off</span>
+              </span>
+            )}
+          </motion.button>
+          
+          <motion.button 
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             onClick={handleReset}
             className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium ${
               isDark 
@@ -634,7 +803,7 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
             <span>Stats</span>
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showStats ? 'rotate-180' : ''}`} />
           </motion.button>
-          </div>
+        </div>
       </div>
 
       <div className="px-5 flex-1 flex flex-col">

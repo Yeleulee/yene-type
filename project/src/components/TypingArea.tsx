@@ -131,14 +131,45 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
     });
   }, []);
 
-  // Clear all timeouts on unmount to prevent memory leaks
+  // Maintain focus when lyrics change or user clicks elsewhere on the page
   useEffect(() => {
+    // Focus the textarea when the component mounts
+    focusTextArea();
+    
+    // Add global click handler to refocus textarea when user clicks anywhere in typing area
+    const handleGlobalClick = (e: MouseEvent) => {
+      // Check if click was inside our component
+      const typingAreaElement = document.querySelector('.typing-container');
+      if (typingAreaElement && typingAreaElement.contains(e.target as Node)) {
+        focusTextArea();
+      }
+    };
+    
+    // Add global keyboard handler to refocus on any key press when typing area is active
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Ignore modifier keys and some special keys
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+      if (['Tab', 'Escape', 'CapsLock', 'Insert'].includes(e.key)) return;
+      
+      // If we have lyrics and are playing, ensure focus on any keypress
+      if (allLyrics && isPlaying && !isComplete) {
+        focusTextArea();
+      }
+    };
+    
+    window.addEventListener('click', handleGlobalClick);
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    
     return () => {
+      window.removeEventListener('click', handleGlobalClick);
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+      
+      // Clear all focus timeouts
       focusTimeoutRefs.current.forEach(timeoutId => {
         clearTimeout(timeoutId);
       });
     };
-  }, []);
+  }, [focusTextArea, allLyrics, isPlaying, isComplete]);
 
   // Reset everything when text changes (meaning a new song was selected)
   useEffect(() => {
@@ -387,6 +418,116 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
     }
   }, [currentTime, activeLyricIndex, lyrics, isPlaying, focusTextArea]);
 
+  // Improved scroll to current lyric when it changes
+  useEffect(() => {
+    if (currentLyric && allLyrics && lyricsRef.current) {
+      // Get the exact position of the current lyric in the full text
+      const currentLyricPosition = allLyrics.indexOf(currentLyric.text);
+      
+      if (currentLyricPosition >= 0) {
+        // Find the character elements in the container
+        const charElements = Array.from(lyricsRef.current.children);
+        
+        // If we have elements and the current position is within bounds
+        if (charElements.length > 0 && currentLyricPosition < charElements.length) {
+          // Calculate the position to scroll to - we want to see several characters ahead
+          const scrollIndex = Math.max(0, currentLyricPosition - 5);
+          
+          // More reliable scrolling with a slight delay to ensure DOM is updated
+          setTimeout(() => {
+            if (charElements[scrollIndex]) {
+              // Smooth scroll to keep the current lyric in view
+              charElements[scrollIndex].scrollIntoView({
+                behavior: 'smooth',
+                block: 'center',
+                inline: 'center'
+              });
+              
+              // Add a pulsing animation to the element for better visibility
+              charElements.slice(currentLyricPosition, currentLyricPosition + currentLyric.text.length).forEach(el => {
+                el.classList.add('highlight-text');
+                // Remove the highlight after a delay to avoid too many highlighted elements
+                setTimeout(() => {
+                  el.classList.remove('highlight-text');
+                }, 2000);
+              });
+            }
+          }, 300);
+        }
+      }
+    }
+  }, [currentLyric, allLyrics]);
+  
+  // Enhanced auto-advance to ensure sync with song
+  useEffect(() => {
+    if (!isPlaying || !currentLyric || !allLyrics) return;
+    
+    // Find the position of the current lyric in the text
+    const currentLyricPosition = allLyrics.indexOf(currentLyric.text);
+    
+    // If user is significantly behind the current lyrics position, auto-advance
+    if (currentLyricPosition > 0 && typedText.length < currentLyricPosition - 20) {
+      // Only auto-advance if the song has been playing for a while
+      if (currentTime > 5) {
+        // Move the typed text position to just before the current lyric
+        // Calculate the position to set the cursor to
+        const newPosition = Math.max(0, currentLyricPosition - 3);
+        setTypedText(allLyrics.substring(0, newPosition));
+        setCurrentPosition(newPosition);
+        
+        // Ensure textarea focus is maintained
+        focusTextArea();
+      }
+    }
+  }, [currentLyric, currentTime, allLyrics, typedText, isPlaying, focusTextArea]);
+
+  // Additional effect to sync with current time more frequently
+  useEffect(() => {
+    // Only run if playing and we have lyrics
+    if (!isPlaying || !allLyrics || !lyrics || lyrics.length === 0) return;
+    
+    // Check current time against lyrics more frequently for better sync
+    const syncInterval = setInterval(() => {
+      // Find the lyric that should be active at the current time
+      if (currentTime > 0) {
+        for (let i = 0; i < lyrics.length; i++) {
+          const lyric = lyrics[i];
+          const nextLyric = i < lyrics.length - 1 ? lyrics[i + 1] : null;
+          
+          // Check if current time falls within this lyric's time range
+          if (lyric.startTime <= currentTime && 
+              (!nextLyric || nextLyric.startTime > currentTime)) {
+            
+            // If this is different from our current active lyric, update UI
+            if (activeLyricIndex !== i) {
+              // Find the position of this lyric in the full text
+              const lyricPosition = allLyrics.indexOf(lyric.text);
+              
+              // If user is significantly behind, help them catch up
+              if (lyricPosition > 0 && typedText.length < lyricPosition - 30) {
+                setTypedText(allLyrics.substring(0, lyricPosition - 5));
+              }
+              
+              // Ensure the current lyric is in view
+              if (lyricsRef.current) {
+                const charElements = Array.from(lyricsRef.current.children);
+                if (charElements.length > 0 && lyricPosition < charElements.length) {
+                  charElements[Math.max(0, lyricPosition - 3)].scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                  });
+                }
+              }
+            }
+            break;
+          }
+        }
+      }
+    }, 200); // Check more frequently for better synchronization
+    
+    return () => clearInterval(syncInterval);
+  }, [isPlaying, currentTime, lyrics, allLyrics, typedText, activeLyricIndex]);
+
   // When video loads, reset and prepare for typing
   useEffect(() => {
     if (videoLoaded) {
@@ -510,48 +651,45 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
     // Render the lyrics with time-based highlighting
     return (
       <div className="relative overflow-hidden px-4">
-        {/* Lyrics display */}
-        <div
-          ref={lyricsRef}
-          className={`w-full py-3 transition-all duration-300 overflow-y-auto max-h-[300px] ${
-            isDark ? 'scrollbar-dark' : 'scrollbar-light'
-          }`}
-          style={{ scrollBehavior: 'smooth' }}
-        >
-          {lyrics.map((lyric, idx) => (
-            <div
-              key={idx}
-              className={`lyric-line mb-4 p-2 rounded-md transition-all duration-300 ${
-                activeLyricIndex === idx 
-                  ? isDark 
-                    ? 'bg-indigo-500/20 border-l-4 border-indigo-500' 
-                    : 'bg-indigo-100/80 border-l-4 border-indigo-500'
-                  : 'border-l-4 border-transparent'
-              }`}
-            >
-              <div className="flex items-center mb-1">
-                <span className={`text-xs font-mono mr-2 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>
-                  {formatTime(lyric.startTime || 0)}
-                </span>
-              </div>
-              <p className={`text-lg ${isDark ? 'text-white' : 'text-gray-800'} ${
-                // Mark this line as completed if it's before our current active line
-                idx < activeLyricIndex ? 'opacity-60' : 'opacity-100'
-              }`}>
-                {lyric.text}
-              </p>
-            </div>
-          ))}
-        </div>
-        
-        {/* Interactive typing display showing character-by-character feedback */}
-        <div className={`mt-6 p-4 rounded-lg font-mono text-lg leading-relaxed ${
-          isDark ? 'bg-slate-800/70' : 'bg-white'
+        {/* Enhanced interactive typing display showing character-by-character feedback */}
+        <div className={`rounded-lg font-mono text-lg leading-relaxed ${
+          isDark ? 'bg-slate-800/70 border border-slate-700/50' : 'bg-white border border-slate-200/80 shadow-sm'
         }`}>
           {allLyrics && (
             <div className="relative">
-              {/* Text content with character-by-character coloring */}
-              <div className="flex flex-wrap">
+              {/* Current lyric indicator */}
+              {currentLyric && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`py-3 px-4 mb-4 rounded-lg ${
+                    isDark 
+                      ? 'bg-indigo-500/20 border-l-4 border-indigo-500' 
+                      : 'bg-indigo-100 border-l-4 border-indigo-500'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className={`px-2 py-0.5 rounded-md font-mono text-xs ${
+                      isDark 
+                        ? 'bg-indigo-500/50 text-white' 
+                        : 'bg-indigo-500 text-white'
+                    }`}>
+                      {formatTime(currentLyric.startTime || 0)}
+                    </div>
+                    <div className={`text-xs px-2 py-0.5 rounded-md font-medium ${
+                      isDark ? 'bg-green-500/20 text-green-400' : 'bg-green-100 text-green-600'
+                    }`}>
+                      Now
+                    </div>
+                  </div>
+                  <p className={`text-xl font-medium ${isDark ? 'text-white' : 'text-gray-800'} highlight-text`}>
+                    {currentLyric.text}
+                  </p>
+                </motion.div>
+              )}
+              
+              {/* Text content with character-by-character coloring - improved highlighting */}
+              <div className="flex flex-wrap py-5 px-4 overflow-auto max-h-[200px] typing-container scrollbar-dark" ref={lyricsRef}>
                 {allLyrics.split('').map((char, index) => {
                   let status = 'waiting';
                   // Character is waiting to be typed
@@ -573,74 +711,127 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
                   // Current position highlighting
                   const isCurrent = index === typedText.length;
                   
-                  // Determine character display and style based on status
+                  // Enhanced check for current lyric - more precise
+                  const isCurrentLyric = currentLyric && 
+                    index >= allLyrics.indexOf(currentLyric.text) && 
+                    index < allLyrics.indexOf(currentLyric.text) + currentLyric.text.length;
+                  
+                  // Check if this is the next upcoming lyric
+                  const isNextLyric = lyrics && 
+                    activeLyricIndex < lyrics.length - 1 && 
+                    index >= allLyrics.indexOf(lyrics[activeLyricIndex + 1]?.text || '') && 
+                    index < allLyrics.indexOf(lyrics[activeLyricIndex + 1]?.text || '') + 
+                      (lyrics[activeLyricIndex + 1]?.text.length || 0);
+                  
+                  // Apply appropriate CSS classes based on status with improved highlighting
+                  const classes = [
+                    'relative',
+                    isSpace ? 'px-1' : 'px-0.5',
+                    isCurrent ? 'char-current cursor-highlight' : '',
+                    status === 'correct' ? 'char-correct' : '',
+                    status === 'incorrect' ? 'char-incorrect shake-animation' : '',
+                    status === 'waiting' && isCurrentLyric ? 'char-active' : '',
+                    status === 'waiting' && isNextLyric ? 'char-next' : '',
+                    status === 'waiting' && !isCurrentLyric && !isNextLyric ? 'char-inactive' : '',
+                    isCurrentLyric && isCurrent ? 'pulse-animation' : '',
+                    isCurrentLyric ? 'current-lyric-char' : ''
+                  ];
+                  
                   return (
-                    <span 
+                    <motion.span 
                       key={index}
-                      className={`
-                        relative 
-                        ${isSpace ? 'px-1' : 'px-0.5'}
-                        ${status === 'waiting' ? 
-                          (isDark ? 'text-gray-500' : 'text-gray-400') : 
-                          status === 'correct' ? 
-                            (isDark ? 'text-green-400' : 'text-green-600') : 
-                            (isDark ? 'text-red-400 bg-red-900/30' : 'text-red-600 bg-red-100')}
-                        ${status === 'incorrect' ? 'shake-animation' : ''}
-                        ${isCurrent ? 'cursor-highlight' : ''}
-                      `}
+                      initial={isCurrent ? { scale: 1.1 } : { scale: 1 }}
+                      animate={isCurrent ? { scale: 1 } : { scale: 1 }}
+                      className={classes.filter(Boolean).join(' ')}
                     >
                       {isSpace ? '\u00A0' : char}
-                      {/* Current position cursor */}
+                      {/* Enhanced cursor */}
                       {isCurrent && (
-                        <motion.span 
-                          className={`absolute left-0 bottom-0 w-full h-[3px] ${isDark ? 'bg-indigo-500' : 'bg-indigo-500'}`}
-                          initial={{ opacity: 0.3 }}
+                        <motion.div 
+                          className={`absolute -left-1 -right-1 -bottom-1 -top-1 rounded ${
+                            isCurrentLyric ? 'current-char-bg' : ''
+                          }`}
+                          initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
-                          transition={{ 
-                            repeat: Infinity, 
-                            repeatType: "reverse", 
-                            duration: 0.8 
-                          }}
-                        />
-                      )}
-                      {/* Error indicator */}
-                      {status === 'incorrect' && (
-                        <motion.span 
-                          className="absolute -bottom-4 left-1/2 transform -translate-x-1/2 text-xs text-red-500"
-                          initial={{ opacity: 0, y: -5 }}
-                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.2 }}
                         >
-                          ⬆
-                        </motion.span>
+                          <motion.span 
+                            className={`absolute left-0 bottom-0 w-full h-[3px] ${
+                              isCurrentLyric 
+                                ? 'bg-indigo-500' 
+                                : isDark 
+                                  ? 'bg-slate-500' 
+                                  : 'bg-slate-400'
+                            }`}
+                            initial={{ opacity: 0.3 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ 
+                              repeat: Infinity, 
+                              repeatType: "reverse", 
+                              duration: 0.8 
+                            }}
+                          />
+                        </motion.div>
                       )}
-                    </span>
+                    </motion.span>
                   );
                 })}
               </div>
               
-              {/* Current line indicator - no need for inline styles anymore */}
-              {typedText.length > 0 && (
-                <></>
+              {/* Show next upcoming lyric */}
+              {lyrics && activeLyricIndex < lyrics.length - 1 && (
+                <div className={`py-3 px-4 mt-4 rounded-lg ${
+                  isDark ? 'bg-slate-700/50' : 'bg-slate-100'
+                }`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className={`px-2 py-0.5 rounded-md font-mono text-xs ${
+                      isDark ? 'bg-slate-600 text-slate-300' : 'bg-slate-300 text-slate-600'
+                    }`}>
+                      {formatTime(lyrics[activeLyricIndex + 1].startTime || 0)}
+                    </div>
+                    <div className={`text-xs px-2 py-0.5 rounded-md font-medium ${
+                      isDark ? 'bg-slate-600/30 text-slate-400' : 'bg-slate-200 text-slate-500'
+                    }`}>
+                      Next
+                    </div>
+                  </div>
+                  <p className={`text-base ${isDark ? 'text-slate-400' : 'text-slate-500'} opacity-75`}>
+                    {lyrics[activeLyricIndex + 1].text}
+                  </p>
+                </div>
               )}
             </div>
           )}
           
           {/* Show stats while typing */}
           {startTime && !isComplete && (
-            <div className="flex justify-between mt-4 text-sm">
-              <div className={`px-3 py-1 rounded-lg ${isDark ? 'bg-slate-700/50' : 'bg-slate-100'}`}>
-                <span className={`font-bold ${isDark ? 'text-indigo-300' : 'text-indigo-600'}`}>{wpm}</span>
-                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}> WPM</span>
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex justify-between mt-6 p-3 rounded-lg bg-gradient-to-r from-indigo-500/10 to-purple-500/10"
+            >
+              <div className={`px-4 py-2 rounded-lg ${isDark ? 'bg-slate-700/50' : 'bg-white/70'} flex items-center gap-2`}>
+                <Zap className={`w-4 h-4 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} />
+                <div>
+                  <span className={`font-bold ${isDark ? 'text-indigo-300' : 'text-indigo-600'}`}>{wpm}</span>
+                  <span className={isDark ? 'text-slate-400' : 'text-slate-500'}> WPM</span>
+                </div>
               </div>
-              <div className={`px-3 py-1 rounded-lg ${isDark ? 'bg-slate-700/50' : 'bg-slate-100'}`}>
-                <span className={`font-bold ${isDark ? 'text-green-300' : 'text-green-600'}`}>{accuracy}%</span>
-                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}> Accuracy</span>
+              <div className={`px-4 py-2 rounded-lg ${isDark ? 'bg-slate-700/50' : 'bg-white/70'} flex items-center gap-2`}>
+                <Check className={`w-4 h-4 ${isDark ? 'text-green-400' : 'text-green-600'}`} />
+                <div>
+                  <span className={`font-bold ${isDark ? 'text-green-300' : 'text-green-600'}`}>{accuracy}%</span>
+                  <span className={isDark ? 'text-slate-400' : 'text-slate-500'}> Accuracy</span>
+                </div>
               </div>
-              <div className={`px-3 py-1 rounded-lg ${isDark ? 'bg-slate-700/50' : 'bg-slate-100'}`}>
-                <span className={`font-bold ${isDark ? 'text-amber-300' : 'text-amber-600'}`}>{errors}</span>
-                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}> Errors</span>
+              <div className={`px-4 py-2 rounded-lg ${isDark ? 'bg-slate-700/50' : 'bg-white/70'} flex items-center gap-2`}>
+                <AlertTriangle className={`w-4 h-4 ${isDark ? 'text-amber-400' : 'text-amber-600'}`} />
+                <div>
+                  <span className={`font-bold ${isDark ? 'text-amber-300' : 'text-amber-600'}`}>{errors}</span>
+                  <span className={isDark ? 'text-slate-400' : 'text-slate-500'}> Errors</span>
+                </div>
               </div>
-            </div>
+            </motion.div>
           )}
         </div>
         

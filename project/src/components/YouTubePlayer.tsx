@@ -66,6 +66,7 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
   // Reset loading state and preload lyrics when video ID changes
   useEffect(() => {
     if (previousVideoId.current !== videoId) {
+      console.log("YouTubePlayer: Video ID changed - Old:", previousVideoId.current, "New:", videoId);
       // Immediately reset all states
       setIsLoading(true);
       setLoadError(null);
@@ -75,19 +76,26 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       // Clear any previous player
       if (player) {
         try {
+          console.log("YouTubePlayer: Stopping previous video");
           player.stopVideo();
+          player.clearVideo();
         } catch (e) {
-          console.warn("Could not stop previous video:", e);
+          console.warn("YouTubePlayer: Could not stop previous video:", e);
         }
       }
       
       // Load lyrics immediately
+      console.log("YouTubePlayer: Loading lyrics");
       loadLyrics(videoId, false);
       
       // Track the new ID
       previousVideoId.current = videoId;
+      
+      // Set playing state to true
+      console.log("YouTubePlayer: Setting playing state to true");
+      useTypingStore.getState().setIsPlaying(true);
     }
-  }, [videoId, player]);
+  }, [videoId, player, loadLyrics]);
 
   // The loadLyrics function with improved error handling
   const loadLyrics = useCallback(async (videoId: string, isPreload = false) => {
@@ -183,90 +191,64 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
     }
   }, [player, isMuted]);
 
+  // Handle player ready event
   const onReady = useCallback((event: YouTubeEvent) => {
+    console.log("YouTubePlayer: Player ready");
     setPlayer(event.target);
     setDuration(event.target.getDuration() || 0);
-    
-    // Immediately clear loading state when player is ready
     setIsLoading(false);
     
-    // Apply optimal settings for fast playback
     try {
-      // Faster loading with lower quality
+      // Set optimal playback settings
       event.target.setPlaybackQuality('small');
+      event.target.setPlaybackRate(1);
       
-      // Set playing state in typing store before starting playback
-      useTypingStore.getState().setIsPlaying(true);
-      
-      // Start playing immediately
+      // Start playback immediately
+      console.log("YouTubePlayer: Starting video playback");
       event.target.playVideo();
       
-      // Force immediate lyrics load when player is ready
-      if ((!initialLoadRef.current || syncAttemptsRef.current < 1) && videoId) {
-        loadLyrics(videoId, false); // Not a preload - force immediate load
+      // Update playing state
+      useTypingStore.getState().setIsPlaying(true);
+      
+      // Load lyrics if needed
+      if (!initialLoadRef.current && videoId) {
+        console.log("YouTubePlayer: Loading lyrics");
+        loadLyrics(videoId, false);
       }
     } catch (e) {
-      console.warn("Error setting initial player state:", e);
+      console.warn("YouTubePlayer: Error in onReady handler:", e);
+      setLoadError("Failed to start video playback. Please try again.");
     }
-    
-    // Clear any existing timer
-    if (timerRef.current) {
-      window.clearInterval(timerRef.current);
-    }
-    
-    // Set up a timer to update the time display
-    timerRef.current = window.setInterval(() => {
-      try {
-        const currentTime = event.target.getCurrentTime() || 0;
-        setCurrentTime(currentTime);
-        
-        const playerState = event.target.getPlayerState();
-        const isCurrentlyPlaying = playerState === 1;
-        
-        // Only update if the state actually changed
-        if (isPlaying !== isCurrentlyPlaying) {
-          setIsPlaying(isCurrentlyPlaying);
-          // Ensure typing store is updated when playing state changes
-          useTypingStore.getState().setIsPlaying(isCurrentlyPlaying);
-        }
-        
-        // Force lyrics loading if playing but no lyrics
-        if (isCurrentlyPlaying && !initialLoadRef.current && syncAttemptsRef.current < 2) {
-          loadLyrics(videoId, false);
-          syncAttemptsRef.current++;
-        }
-      } catch (e) {
-        console.warn("Error in player timer update:", e);
-      }
-    }, 100); // Slightly less frequent updates for better performance
-  }, [videoId, isPlaying, loadLyrics, setIsPlaying]);
+  }, [videoId, loadLyrics]);
 
+  // Handle player state changes
   const onStateChange = useCallback((event: YouTubeEvent) => {
-    const playerState = event.data;
-    // 1 = playing, 2 = paused, 0 = ended, 3 = buffering
-    const isCurrentlyPlaying = playerState === 1;
-    setIsPlaying(isCurrentlyPlaying);
-    useTypingStore.getState().setIsPlaying(isCurrentlyPlaying);
-    
-    // Clear loading state when video starts playing
-    if (playerState === 1) {
-      setIsLoading(false);
+    try {
+      const playerState = event.target.getPlayerState();
+      console.log("YouTubePlayer: State changed to", playerState);
       
-      // Force update the current time
-      try {
-        const currentTime = event.target.getCurrentTime();
-        setCurrentTime(currentTime);
-      } catch (e) {
-        console.warn("Error getting current time:", e);
+      // 1 = playing, 2 = paused, 0 = ended, 3 = buffering
+      const isCurrentlyPlaying = playerState === 1;
+      
+      if (isPlaying !== isCurrentlyPlaying) {
+        setIsPlaying(isCurrentlyPlaying);
+        useTypingStore.getState().setIsPlaying(isCurrentlyPlaying);
+      }
+
+      // Clear loading state when video starts playing
+      if (playerState === 1) {
+        setIsLoading(false);
+        setLoadError(null);
       }
       
-      // When playback starts but initialization not complete
-      if (!initialLoadRef.current && syncAttemptsRef.current < 2) {
-        loadLyrics(videoId, false);
-        syncAttemptsRef.current++;
+      // Handle buffering state
+      if (playerState === 3) {
+        setIsLoading(true);
       }
+    } catch (e) {
+      console.warn("YouTubePlayer: Error in onStateChange handler:", e);
     }
-  }, [videoId, loadLyrics, setIsPlaying]);
+  }, [isPlaying]);
 
   const onError = useCallback((error: any) => {
     console.error("YouTube player error:", error);
@@ -294,7 +276,7 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
     setIsLoading(false);
   }, []);
 
-  // Optimize YouTube player options for faster loading
+  // Initialize player with proper options
   const opts = {
     height: '100%',
     width: '100%',
@@ -304,13 +286,19 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       modestbranding: 1,
       rel: 0,
       playsinline: 1,
-      // Performance optimizations
-      vq: 'small', // Start with lower quality for faster initial load
-      disablekb: 0, // Allow keyboard controls
-      iv_load_policy: 3, // Hide annotations
-      fs: 1, // Allow fullscreen
+      vq: 'small',
+      disablekb: 0,
+      iv_load_policy: 3,
+      fs: 0,
       origin: window.location.origin,
       enablejsapi: 1,
+      host: 'https://www.youtube.com',
+      widget_referrer: window.location.href,
+      // Add these parameters to prevent overlays
+      showinfo: 0,
+      annotations: 0,
+      cc_load_policy: 0,
+      hl: 'en',
     },
   };
 
@@ -338,16 +326,35 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       {/* Player Container */}
       <div className="relative aspect-video w-full">
         {/* YouTube Player */}
-        <div className={`w-full h-full transition-opacity ${isAudioOnly ? 'opacity-0' : 'opacity-100'}`}>
-      <YouTube
-        videoId={videoId}
-        opts={opts}
+        <div className="absolute inset-0 w-full h-full z-10">
+          <YouTube
+            videoId={videoId}
+            opts={opts}
             onReady={onReady}
-        onStateChange={onStateChange}
+            onStateChange={onStateChange}
             onError={onError}
             className="w-full h-full"
-      />
-    </div>
+            style={{ 
+              position: 'absolute', 
+              top: 0, 
+              left: 0, 
+              width: '100%', 
+              height: '100%',
+              pointerEvents: 'auto',
+              zIndex: 20
+            }}
+            iframeClassName="w-full h-full"
+          />
+        </div>
+
+        {/* Overlay Prevention Layer */}
+        <div 
+          className="absolute inset-0 pointer-events-none z-30" 
+          style={{ 
+            backgroundColor: 'transparent',
+            pointerEvents: 'none'
+          }} 
+        />
         
         {/* Audio Only Mode Overlay */}
         {isAudioOnly && (
@@ -446,19 +453,6 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
               </div>
               <p className="text-lg font-medium mb-1">Loading song data...</p>
               <p className="text-sm text-slate-300 mb-4">This may take a moment</p>
-              {syncAttemptsRef.current > 1 && (
-                <button 
-                  onClick={() => {
-                    setIsLoading(false);
-                    if (player) {
-                      player.playVideo();
-                    }
-                  }}
-                  className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-medium transition-colors"
-                >
-                  Skip loading
-                </button>
-              )}
             </div>
           </div>
         )}

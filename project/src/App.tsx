@@ -21,12 +21,18 @@ function App() {
     setIsDark(prefersDark);
   }, []);
 
-  const handleVideoSelect = (video: YouTubeVideo) => {
-    console.log("Selected video:", video);
+  const handleVideoSelect = (videoId: string) => {
+    console.log("App: Video selected - ID:", videoId);
+    console.log("App: Current videoId state:", videoId);
     // Reset the typing store first
     useTypingStore.getState().reset();
+    console.log("App: Typing store reset");
     // Set the video ID after resetting
-    setVideoId(video.id);
+    setVideoId(videoId);
+    console.log("App: Video ID set");
+    // Set isPlaying to true to start the video
+    useTypingStore.getState().setIsPlaying(true);
+    console.log("App: Playing state set to true");
   };
 
   const containerVariants = {
@@ -247,7 +253,7 @@ function App() {
           </AnimatePresence>
           
           <div className="mt-4">
-            <SearchBar onVideoSelect={handleVideoSelect} className="max-w-2xl mx-auto" isDark={isDark} />
+            <SearchBar onSelectVideo={handleVideoSelect} isDark={isDark} />
           </div>
         </div>
       </header>
@@ -344,28 +350,30 @@ function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-6">
-          <motion.div
+        <motion.div
           variants={containerVariants}
           initial="hidden"
           animate="visible"
           className="grid grid-cols-1 lg:grid-cols-5 gap-6"
         >
-          <motion.div variants={itemVariants} className="lg:col-span-2">
-            {videoId ? (
-              <YouTubePlayer videoId={videoId} isDark={isDark} />
-            ) : (
-              <div className={`w-full aspect-video rounded-xl flex flex-col items-center justify-center gap-4 ${
-                isDark ? 'bg-[#24283b]' : 'bg-white/80 shadow-lg shadow-purple-500/5'
-              }`}>
-                <Headphones className={`w-16 h-16 ${isDark ? 'text-[#7aa2f7]' : 'text-purple-600'} opacity-70`} />
-                <div className="text-center px-6">
-                  <h2 className="text-xl font-semibold mb-2">Search for a Song</h2>
-                  <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} max-w-md`}>
-                    Type along with your favorite songs and improve your typing speed with lyrics!
-                  </p>
+          <motion.div variants={itemVariants} className="lg:col-span-2 min-h-[400px]">
+            <div className="sticky top-[100px]">
+              {videoId ? (
+                <YouTubePlayer videoId={videoId} isDark={isDark} />
+              ) : (
+                <div className={`w-full aspect-video rounded-xl flex flex-col items-center justify-center gap-4 ${
+                  isDark ? 'bg-[#24283b]' : 'bg-white/80 shadow-lg shadow-purple-500/5'
+                }`}>
+                  <Headphones className={`w-16 h-16 ${isDark ? 'text-[#7aa2f7]' : 'text-purple-600'} opacity-70`} />
+                  <div className="text-center px-6">
+                    <h2 className="text-xl font-semibold mb-2">Search for a Song</h2>
+                    <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} max-w-md`}>
+                      Type along with your favorite songs and improve your typing speed with lyrics!
+                    </p>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </motion.div>
           <motion.div variants={itemVariants} className="lg:col-span-3">
             <TypingArea isDark={isDark} />

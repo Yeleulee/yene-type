@@ -89,6 +89,11 @@ export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchTimeoutRef = useRef<number | null>(null);
+  const previousVideoId = useRef<string | null>(null);
+  const player = useRef<YT.Player | null>(null);
+  const loadError = useRef<string | null>(null);
+  const syncAttemptsRef = useRef<number>(0);
+  const initialLoadRef = useRef<boolean>(true);
   
   // Load search history from localStorage
   useEffect(() => {
@@ -178,7 +183,7 @@ export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
   }, []);
   
   const handleSelectVideo = (videoId: string, title: string) => {
-    console.log("Video selected:", videoId, title);
+    console.log("SearchBar: Video selected - ID:", videoId, "Title:", title);
     onSelectVideo(videoId);
     setShowResults(false);
     

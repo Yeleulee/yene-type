@@ -90,7 +90,7 @@ export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchTimeoutRef = useRef<number | null>(null);
   const previousVideoId = useRef<string | null>(null);
-  const player = useRef<YT.Player | null>(null);
+  const player = useRef<any | null>(null);
   const loadError = useRef<string | null>(null);
   const syncAttemptsRef = useRef<number>(0);
   const initialLoadRef = useRef<boolean>(true);
@@ -188,9 +188,20 @@ export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
     setShowResults(false);
     
     // Find the selected video in results to save to history
-    const selectedVideo = results.find(result => result.id === videoId);
+    const selectedVideo = results.find(result => result.id === videoId) || 
+                          songDatabase.find(result => result.id === videoId) || 
+                          popularSongs.find(result => result.id === videoId);
+    
     if (selectedVideo) {
       saveToHistory(selectedVideo);
+    } else if (videoId) {
+      // Create a basic result if we don't have the data
+      saveToHistory({
+        id: videoId,
+        title: title || 'Unknown Song',
+        artist: 'Unknown Artist',
+        thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
+      });
     }
   };
   

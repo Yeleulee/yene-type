@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import YouTube, { YouTubePlayer as Player, YouTubeEvent } from 'react-youtube';
 import { motion } from 'framer-motion';
 import { useTypingStore } from '../store/typingStore';
 import { fetchLyrics, formatTime, LyricLine } from '../lib/lyrics';
@@ -29,11 +28,10 @@ interface SongInfo {
 
 export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
   const { changeSong, isPlaying, setIsPlaying } = useTypingStore();
-  const [player, setPlayer] = useState<Player | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isAudioOnly, setIsAudioOnly] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [songInfo, setSongInfo] = useState<SongInfo>({
@@ -41,88 +39,99 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
     artist: 'Please wait'
   });
   
-  const timerRef = useRef<number | null>(null);
+  // References
+  const playerContainerRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const previousVideoId = useRef<string | null>(null);
-  const syncAttemptsRef = useRef<number>(0);
   const initialLoadRef = useRef<boolean>(false);
-  const changeSongTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const errorRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Clean up all timers on unmount to prevent memory leaks
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) {
-        window.clearInterval(timerRef.current);
-      }
-      if (changeSongTimeoutRef.current) {
-        clearTimeout(changeSongTimeoutRef.current);
-      }
-      if (errorRetryTimeoutRef.current) {
-        clearTimeout(errorRetryTimeoutRef.current);
-      }
-    };
-  }, []);
+  // Create YouTube iframe API URL with better parameters
+  const youtubeUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1&modestbranding=1&rel=0&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}&widget_referrer=${encodeURIComponent(window.location.href)}`;
 
-  // Reset loading state and preload lyrics when video ID changes
+  // Load lyrics when video ID changes
   useEffect(() => {
     if (previousVideoId.current !== videoId) {
       console.log("YouTubePlayer: Video ID changed - Old:", previousVideoId.current, "New:", videoId);
-      // Immediately reset all states
       setIsLoading(true);
       setLoadError(null);
-      syncAttemptsRef.current = 0;
       initialLoadRef.current = false;
       
-      // Clear any previous player
-      if (player) {
-        try {
-          console.log("YouTubePlayer: Stopping previous video");
-          player.stopVideo();
-          player.clearVideo();
-        } catch (e) {
-          console.warn("YouTubePlayer: Could not stop previous video:", e);
-        }
-      }
-      
-      // Load lyrics immediately
-      console.log("YouTubePlayer: Loading lyrics");
-      loadLyrics(videoId, false);
+      // Load lyrics
+      loadLyrics(videoId);
       
       // Track the new ID
       previousVideoId.current = videoId;
       
       // Set playing state to true
-      console.log("YouTubePlayer: Setting playing state to true");
       useTypingStore.getState().setIsPlaying(true);
-    }
-  }, [videoId, player, loadLyrics]);
-
-  // The loadLyrics function with improved error handling
-  const loadLyrics = useCallback(async (videoId: string, isPreload = false) => {
-    // Clear any existing error retry timeout
-    if (errorRetryTimeoutRef.current) {
-      clearTimeout(errorRetryTimeoutRef.current);
-      errorRetryTimeoutRef.current = null;
-    }
-
-    try {
-      if (!isPreload) {
-        setIsLoading(true);
-      }
       
+      // Clear loading state after a timeout (in case loading takes too long)
+      const loadingTimeout = setTimeout(() => {
+        setIsLoading(false);
+      }, 3000);
+      
+      return () => clearTimeout(loadingTimeout);
+    }
+  }, [videoId]);
+
+  // Set up message listener for iframe API communication
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Only accept messages from YouTube
+      if (event.origin !== 'https://www.youtube.com') return;
+      
+      try {
+        const data = JSON.parse(event.data);
+        
+        // Handle YouTube API events
+        if (data.event === 'onStateChange') {
+          // 1 = playing, 2 = paused
+          const isCurrentlyPlaying = data.info === 1;
+          setIsPlaying(isCurrentlyPlaying);
+          useTypingStore.getState().setIsPlaying(isCurrentlyPlaying);
+          
+          if (data.info === 1) {
+            setIsLoading(false);
+          }
+        }
+        
+        // Update current time for better synchronization
+        if (data.event === 'onTimeUpdate') {
+          setCurrentTime(data.info.currentTime || 0);
+        }
+        
+        // Handle duration changes
+        if (data.event === 'onReady' || data.event === 'onDurationChange') {
+          setDuration(data.info.duration || 0);
+        }
+      } catch (e) {
+        // Ignore parsing errors
+      }
+    };
+    
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  // Function to load lyrics with better error handling
+  const loadLyrics = useCallback(async (videoId: string) => {
+    try {
+      console.log("YouTubePlayer: Loading lyrics for video ID:", videoId);
       const song = await fetchLyrics(videoId);
       
       setSongInfo({
-        title: song.title,
-        artist: song.artist
+        title: song.title || 'Unknown Title',
+        artist: song.artist || 'Unknown Artist'
       });
       
-      // Ensure we have valid lyrics before proceeding
+      // Ensure we have valid lyrics
       if (song.lyrics && song.lyrics.length > 0) {
-        // Format lyrics better for typing practice - add proper spacing
+        console.log("YouTubePlayer: Lyrics loaded successfully, lines:", song.lyrics.length);
+        
+        // Format lyrics for typing practice
         const enhancedLyrics = song.lyrics.map(lyric => ({
           ...lyric,
-          text: lyric.text.trim() // Ensure clean text
+          text: lyric.text.trim()
         }));
         
         const combinedText = enhancedLyrics.map(lyric => lyric.text).join(' ');
@@ -130,191 +139,64 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
         // Apply lyrics to the typing store
         changeSong(enhancedLyrics, combinedText);
         initialLoadRef.current = true;
+        setIsLoading(false);
         
-        if (!isPreload) {
-          setIsLoading(false);
-        }
-        
-        // Set a backup timeout to re-apply lyrics if needed
-        if (changeSongTimeoutRef.current) {
-          clearTimeout(changeSongTimeoutRef.current);
-        }
-        
-        changeSongTimeoutRef.current = setTimeout(() => {
+        // Apply a second time after a delay to ensure it takes effect
+        setTimeout(() => {
           changeSong(enhancedLyrics, combinedText);
-          changeSongTimeoutRef.current = null;
-        }, 1000);
+        }, 500);
       } else {
-        // Handle empty lyrics case
         throw new Error('No lyrics found for this song');
       }
     } catch (error) {
+      console.error("YouTubePlayer: Error loading lyrics:", error);
       const errorMessage = error instanceof Error 
         ? error.message 
         : 'Unknown error occurred';
         
       setLoadError(`Failed to load lyrics: ${errorMessage}. Please try another song.`);
-      
-      // Retry immediately after error if it's not already a retry attempt
-      if (syncAttemptsRef.current < 3) {
-        syncAttemptsRef.current++;
-        
-        errorRetryTimeoutRef.current = setTimeout(() => {
-          loadLyrics(videoId, false);
-          errorRetryTimeoutRef.current = null;
-        }, 800);
-      }
-      
-      if (!isPreload) {
-        setIsLoading(false);
-      }
+      setIsLoading(false);
     }
   }, [changeSong]);
 
+  // Toggle audio-only mode
   const toggleAudioOnly = useCallback(() => {
     setIsAudioOnly(prev => !prev);
   }, []);
 
+  // Toggle mute
   const toggleMute = useCallback(() => {
-    if (!player) return;
+    setIsMuted(prev => !prev);
     
-    try {
-    if (isMuted) {
-      player.unMute();
-      setIsMuted(false);
-    } else {
-      player.mute();
-      setIsMuted(true);
-    }
-    } catch (error) {
-      console.warn('Error toggling mute state:', error);
-    }
-  }, [player, isMuted]);
-
-  // Handle player ready event
-  const onReady = useCallback((event: YouTubeEvent) => {
-    console.log("YouTubePlayer: Player ready");
-    setPlayer(event.target);
-    setDuration(event.target.getDuration() || 0);
-    setIsLoading(false);
-    
-    try {
-      // Set optimal playback settings
-      event.target.setPlaybackQuality('small');
-      event.target.setPlaybackRate(1);
-      
-      // Start playback immediately
-      console.log("YouTubePlayer: Starting video playback");
-      event.target.playVideo();
-      
-      // Update playing state
-      useTypingStore.getState().setIsPlaying(true);
-      
-      // Load lyrics if needed
-      if (!initialLoadRef.current && videoId) {
-        console.log("YouTubePlayer: Loading lyrics");
-        loadLyrics(videoId, false);
-      }
-    } catch (e) {
-      console.warn("YouTubePlayer: Error in onReady handler:", e);
-      setLoadError("Failed to start video playback. Please try again.");
-    }
-  }, [videoId, loadLyrics]);
-
-  // Handle player state changes
-  const onStateChange = useCallback((event: YouTubeEvent) => {
-    try {
-      const playerState = event.target.getPlayerState();
-      console.log("YouTubePlayer: State changed to", playerState);
-      
-      // 1 = playing, 2 = paused, 0 = ended, 3 = buffering
-      const isCurrentlyPlaying = playerState === 1;
-      
-      if (isPlaying !== isCurrentlyPlaying) {
-        setIsPlaying(isCurrentlyPlaying);
-        useTypingStore.getState().setIsPlaying(isCurrentlyPlaying);
-      }
-
-      // Clear loading state when video starts playing
-      if (playerState === 1) {
-        setIsLoading(false);
-        setLoadError(null);
-      }
-      
-      // Handle buffering state
-      if (playerState === 3) {
-        setIsLoading(true);
-      }
-    } catch (e) {
-      console.warn("YouTubePlayer: Error in onStateChange handler:", e);
-    }
-  }, [isPlaying]);
-
-  const onError = useCallback((error: any) => {
-    console.error("YouTube player error:", error);
-    const errorCode = error?.data || 'unknown';
-    let errorMessage = 'Unknown error occurred';
-    
-    // Map YouTube error codes to human-readable messages
-    switch(errorCode) {
-      case 2:
-        errorMessage = 'Invalid video ID';
-        break;
-      case 5:
-        errorMessage = 'Video cannot be played in the player';
-        break;
-      case 100:
-        errorMessage = 'Video not found';
-        break;
-      case 101:
-      case 150:
-        errorMessage = 'Video cannot be played in embedded players';
-        break;
-    }
-    
-    setLoadError(`Error loading YouTube video: ${errorMessage}`);
-    setIsLoading(false);
+    // We can't directly control the iframe's mute state without the API
+    // But we can show the controls and let users handle it there
   }, []);
 
-  // Initialize player with proper options
-  const opts = {
-    height: '100%',
-    width: '100%',
-    playerVars: {
-      autoplay: 1,
-      controls: 1,
-      modestbranding: 1,
-      rel: 0,
-      playsinline: 1,
-      vq: 'small',
-      disablekb: 0,
-      iv_load_policy: 3,
-      fs: 0,
-      origin: window.location.origin,
-      enablejsapi: 1,
-      host: 'https://www.youtube.com',
-      widget_referrer: window.location.href,
-      // Add these parameters to prevent overlays
-      showinfo: 0,
-      annotations: 0,
-      cc_load_policy: 0,
-      hl: 'en',
-    },
-  };
-
-  const renderProgressBar = () => {
-    const progress = duration ? (currentTime / duration) * 100 : 0;
+  // Handle iframe load
+  const handleIframeLoad = useCallback(() => {
+    console.log("YouTubePlayer: iframe loaded");
+    setIsLoading(false);
+    setIsPlaying(true);
+    useTypingStore.getState().setIsPlaying(true);
     
-    return (
-      <div className="h-1.5 w-full bg-slate-700/30 rounded-full overflow-hidden">
-        <div 
-          className={`h-full ${isDark ? 'bg-indigo-500' : 'bg-indigo-500'}`}
-          style={{ width: `${progress}%` }}
-        ></div>
-      </div>
-    );
-  };
-
+    // Set up timer to check progress
+    const progressTimer = setInterval(() => {
+      if (iframeRef.current && initialLoadRef.current) {
+        // Send message to iframe to update current time
+        try {
+          iframeRef.current.contentWindow?.postMessage(
+            JSON.stringify({ event: 'command', func: 'getCurrentTime' }),
+            'https://www.youtube.com'
+          );
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+    }, 500);
+    
+    return () => clearInterval(progressTimer);
+  }, [setIsPlaying]);
+  
   return (
     <motion.div 
       className={`w-full rounded-xl overflow-hidden relative ${
@@ -324,37 +206,25 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       animate={{ opacity: 1, y: 0 }}
     >
       {/* Player Container */}
-      <div className="relative aspect-video w-full">
-        {/* YouTube Player */}
-        <div className="absolute inset-0 w-full h-full z-10">
-          <YouTube
-            videoId={videoId}
-            opts={opts}
-            onReady={onReady}
-            onStateChange={onStateChange}
-            onError={onError}
-            className="w-full h-full"
-            style={{ 
-              position: 'absolute', 
-              top: 0, 
-              left: 0, 
-              width: '100%', 
-              height: '100%',
-              pointerEvents: 'auto',
-              zIndex: 20
-            }}
-            iframeClassName="w-full h-full"
+      <div className="relative aspect-video w-full bg-black" ref={playerContainerRef}>
+        {/* Direct YouTube iFrame */}
+        <iframe
+          ref={iframeRef}
+          src={youtubeUrl}
+          className="absolute inset-0 w-full h-full"
+          frameBorder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          onLoad={handleIframeLoad}
+        ></iframe>
+        
+        {/* Progress indicator */}
+        <div className="absolute bottom-0 left-0 right-0 h-1 z-30 bg-black/40">
+          <div 
+            className="h-full bg-indigo-500"
+            style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
           />
         </div>
-
-        {/* Overlay Prevention Layer */}
-        <div 
-          className="absolute inset-0 pointer-events-none z-30" 
-          style={{ 
-            backgroundColor: 'transparent',
-            pointerEvents: 'none'
-          }} 
-        />
         
         {/* Audio Only Mode Overlay */}
         {isAudioOnly && (
@@ -379,11 +249,9 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
                   key={i}
                   className="w-1 bg-indigo-400/80 rounded-t-full"
                   animate={{
-                    height: [
-                      Math.random() * 10 + 2,
-                      Math.random() * 40 + 10,
-                      Math.random() * 15 + 5
-                    ]
+                    height: isPlaying 
+                      ? [Math.random() * 10 + 2, Math.random() * 40 + 10, Math.random() * 15 + 5]
+                      : [Math.random() * 5 + 2]
                   }}
                   transition={{
                     duration: 1.2,
@@ -396,10 +264,12 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
               ))}
             </div>
             
-            {/* Enhanced YouTube Music style lyrics display */}
             <div className="mt-6 text-center max-w-xl text-white font-medium">
               <p className="text-lg">
                 {isPlaying ? "Music playing in audio-only mode" : "Press play to continue"}
+              </p>
+              <p className="text-sm text-white/60 mt-2">
+                Current time: {formatTime(currentTime)} / {formatTime(duration)}
               </p>
             </div>
           </div>
@@ -407,7 +277,7 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
         
         {/* Controls Overlay */}
         <div className={`absolute left-0 right-0 bottom-0 p-4 bg-gradient-to-t from-black/80 to-transparent 
-          flex items-center justify-between z-20`}
+          flex items-center justify-between z-20 ${isAudioOnly ? 'opacity-0' : 'opacity-100'}`}
         >
           <div className="flex items-center gap-2 text-white">
             <button 
@@ -433,11 +303,11 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
                 <Volume2 className="w-5 h-5" />
               )}
             </button>
-          </div>
-          
-          <div className="flex items-center text-white">
-            <span className="font-mono text-sm mr-2">{formatTime(currentTime)} / {formatTime(duration)}</span>
-            <Clock className="w-4 h-4 opacity-80" />
+            
+            {/* Time display */}
+            <div className="ml-3 text-sm font-mono">
+              {formatTime(currentTime)} / {formatTime(duration)}
+            </div>
           </div>
         </div>
         
@@ -466,12 +336,7 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
               </div>
               <p className="text-lg font-medium mb-3">{loadError}</p>
               <button 
-                onClick={() => {
-                  setLoadError(null);
-                  if (player) {
-                    player.playVideo();
-                  }
-                }}
+                onClick={() => setLoadError(null)}
                 className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-medium transition-colors"
               >
                 Try anyway
@@ -479,11 +344,6 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
             </div>
           </div>
         )}
-      </div>
-      
-      {/* Progress Bar */}
-      <div className="w-full">
-        {renderProgressBar()}
       </div>
       
       {/* Song Details */}

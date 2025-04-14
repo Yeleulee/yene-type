@@ -506,27 +506,134 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
               // If user is significantly behind, help them catch up
               if (lyricPosition > 0 && typedText.length < lyricPosition - 30) {
                 setTypedText(allLyrics.substring(0, lyricPosition - 5));
+                setCurrentPosition(lyricPosition - 5);
               }
               
-              // Ensure the current lyric is in view
+              // Force update the active lyric index in the store
+              const store = useTypingStore.getState();
+              // Update both the current lyric and active index directly in the store
+              store.setCurrentLyric(lyric);
+              // Manually update active index since there's no direct setter
+              useTypingStore.setState({ ...store, activeLyricIndex: i });
+              
+              // Ensure the current lyric is in view - more aggressively
               if (lyricsRef.current) {
                 const charElements = Array.from(lyricsRef.current.children);
                 if (charElements.length > 0 && lyricPosition < charElements.length) {
-                  charElements[Math.max(0, lyricPosition - 3)].scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'center'
-                  });
+                  const targetElement = charElements[Math.max(0, lyricPosition)];
+                  if (targetElement) {
+                    targetElement.scrollIntoView({
+                      behavior: 'smooth',
+                      block: 'center'
+                    });
+                    
+                    // Add strong visual highlight to current lyric section
+                    charElements.forEach((el, idx) => {
+                      // Clear all highlights first
+                      el.classList.remove('current-lyric-char');
+                      el.classList.remove('highlight-text');
+                      el.classList.remove('current-section');
+                      el.classList.remove('past-section');
+                      el.classList.remove('future-section');
+                      
+                      // Then add highlights for current lyric only
+                      if (idx >= lyricPosition && idx < lyricPosition + lyric.text.length) {
+                        el.classList.add('current-lyric-char');
+                        el.classList.add('current-section');
+                        el.classList.add('highlight-text');
+                      } else if (idx < lyricPosition) {
+                        el.classList.add('past-section');
+                      } else {
+                        el.classList.add('future-section');
+                      }
+                      
+                      // Also highlight the current character position
+                      if (idx === typedText.length) {
+                        el.classList.add('char-current');
+                        el.classList.add('cursor-highlight');
+                      } else {
+                        el.classList.remove('char-current');
+                        el.classList.remove('cursor-highlight');
+                      }
+                    });
+                  }
                 }
               }
+              
+              // Pulse effect for the current line for better visibility
+              document.querySelectorAll('.current-section').forEach(el => {
+                el.classList.add('highlight-pulse');
+                setTimeout(() => el.classList.remove('highlight-pulse'), 1000);
+              });
             }
             break;
           }
         }
       }
-    }, 200); // Check more frequently for better synchronization
+    }, 50); // Check very frequently (50ms) for better synchronization
     
     return () => clearInterval(syncInterval);
   }, [isPlaying, currentTime, lyrics, allLyrics, typedText, activeLyricIndex]);
+
+  // Direct reaction to currentTime changes to enhance sync
+  useEffect(() => {
+    if (!isPlaying || !lyrics || lyrics.length === 0 || currentTime <= 0) return;
+    
+    // Directly check which lyric should be active based on current time
+    let foundActiveIndex = -1;
+    
+    for (let i = 0; i < lyrics.length; i++) {
+      const lyric = lyrics[i];
+      const nextLyric = i < lyrics.length - 1 ? lyrics[i + 1] : null;
+      
+      if (lyric.startTime <= currentTime && (!nextLyric || nextLyric.startTime > currentTime)) {
+        foundActiveIndex = i;
+        break;
+      }
+    }
+    
+    // If we found a matching lyric and it's different from current
+    if (foundActiveIndex >= 0 && foundActiveIndex !== activeLyricIndex) {
+      // Update the store
+      const store = useTypingStore.getState();
+      store.setCurrentLyric(lyrics[foundActiveIndex]);
+      // Update the active index directly in the state
+      useTypingStore.setState({ ...store, activeLyricIndex: foundActiveIndex });
+      
+      // Visual feedback for the sync
+      if (lyricsRef.current) {
+        // Directly force-highlight the new active lyric
+        const lyricText = lyrics[foundActiveIndex].text;
+        const lyricPosition = allLyrics.indexOf(lyricText);
+        
+        if (lyricPosition >= 0) {
+          // Force immediate visual feedback
+          setTimeout(() => {
+            if (lyricsRef.current) {
+              const charElements = Array.from(lyricsRef.current.children);
+              
+              // Create a strong visual pulse animation for the current lyric
+              charElements.forEach((el, idx) => {
+                if (idx >= lyricPosition && idx < lyricPosition + lyricText.length) {
+                  // Add and then remove class to create pulse effect
+                  el.classList.add('highlight-pulse');
+                  setTimeout(() => el.classList.remove('highlight-pulse'), 300);
+                }
+              });
+              
+              // Scroll immediately to the current lyric
+              if (charElements[lyricPosition]) {
+                charElements[lyricPosition].scrollIntoView({
+                  behavior: 'auto', // Use 'auto' for immediate scroll without animation
+                  block: 'center'
+                });
+              }
+            }
+          }, 0);
+        }
+      }
+    }
+  }, [currentTime, lyrics, activeLyricIndex, isPlaying, allLyrics]);
 
   // When video loads, reset and prepare for typing
   useEffect(() => {
@@ -541,6 +648,99 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
       focusTextArea();
     }
   }, [videoLoaded, reset, focusTextArea]);
+
+  // Force re-sync every time currentTime changes or when lyrics change
+  useEffect(() => {
+    if (!isPlaying || !currentLyric || allLyrics.length === 0) return;
+
+    // Get the position of the current lyric in the entire text
+    const lyricPosition = allLyrics.indexOf(currentLyric.text);
+    if (lyricPosition < 0) return;
+
+    // Force the current position to be visible
+    requestAnimationFrame(() => {
+      if (lyricsRef.current) {
+        const charElements = Array.from(lyricsRef.current.children);
+        
+        // Mark all characters with their relation to current lyric
+        charElements.forEach((el, idx) => {
+          // First remove all status classes
+          el.classList.remove('current-section');
+          el.classList.remove('past-section');
+          el.classList.remove('future-section');
+          
+          // Add appropriate class based on position
+          if (idx >= lyricPosition && idx < lyricPosition + currentLyric.text.length) {
+            el.classList.add('current-section');
+          } else if (idx < lyricPosition) {
+            el.classList.add('past-section');
+          } else {
+            el.classList.add('future-section');
+          }
+          
+          // Also highlight the character if it's the current position
+          if (idx === typedText.length) {
+            el.classList.add('char-current');
+            el.classList.add('cursor-highlight');
+          } else {
+            el.classList.remove('char-current');
+            el.classList.remove('cursor-highlight');
+          }
+        });
+        
+        // Make sure the current lyric is always visible
+        if (charElements[lyricPosition]) {
+          const container = lyricsRef.current;
+          const element = charElements[lyricPosition];
+          
+          // Calculate if element is in view
+          const containerRect = container.getBoundingClientRect();
+          const elementRect = element.getBoundingClientRect();
+          
+          const isInView = 
+            elementRect.top >= containerRect.top && 
+            elementRect.bottom <= containerRect.bottom;
+            
+          // If not in view, scroll to it immediately
+          if (!isInView) {
+            element.scrollIntoView({
+              behavior: 'auto',
+              block: 'start'
+            });
+          }
+        }
+      }
+    });
+    
+    // Add a very strong visual indicator for the current position
+    const endOfCurrentLyric = lyricPosition + currentLyric.text.length;
+    const userPosition = Math.min(typedText.length, allLyrics.length);
+    
+    // If user is typing and has reached or passed the current lyric but hasn't completed it
+    if (userPosition >= lyricPosition && userPosition < endOfCurrentLyric) {
+      // User is currently typing the active lyric - perfect sync!
+      console.log("User is typing the active lyric - perfect sync!");
+    } 
+    // If user is behind the current lyric
+    else if (userPosition < lyricPosition) {
+      // User needs to catch up
+      if (lyricPosition - userPosition > 30) {
+        // If too far behind, auto-advance
+        setTypedText(allLyrics.substring(0, Math.max(0, lyricPosition - 5)));
+        setCurrentPosition(Math.max(0, lyricPosition - 5));
+        focusTextArea(); // Keep focus
+        console.log("Auto-advanced to catch up with current lyric");
+      } else {
+        // Just draw attention to the current lyric
+        console.log("User needs to type faster to keep up");
+      }
+    }
+    // If user is ahead of current lyric
+    else if (userPosition > endOfCurrentLyric) {
+      // User is ahead of the current lyric
+      console.log("User is ahead of the current lyric");
+    }
+  }, [currentTime, currentLyric, allLyrics, typedText.length, isPlaying, focusTextArea]);
 
   // Modified renderTypingText to highlight the current line based on time
   const renderTypingText = () => {
@@ -723,6 +923,21 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
                     index < allLyrics.indexOf(lyrics[activeLyricIndex + 1]?.text || '') + 
                       (lyrics[activeLyricIndex + 1]?.text.length || 0);
                   
+                  // Determine timing-based section (past, current, future)
+                  let timingSection = '';
+                  if (currentLyric) {
+                    const currentLyricPos = allLyrics.indexOf(currentLyric.text);
+                    const currentLyricEnd = currentLyricPos + currentLyric.text.length;
+                    
+                    if (index >= currentLyricPos && index < currentLyricEnd) {
+                      timingSection = 'current-section';
+                    } else if (index < currentLyricPos) {
+                      timingSection = 'past-section';
+                    } else {
+                      timingSection = 'future-section';
+                    }
+                  }
+                  
                   // Apply appropriate CSS classes based on status with improved highlighting
                   const classes = [
                     'relative',
@@ -734,7 +949,8 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
                     status === 'waiting' && isNextLyric ? 'char-next' : '',
                     status === 'waiting' && !isCurrentLyric && !isNextLyric ? 'char-inactive' : '',
                     isCurrentLyric && isCurrent ? 'pulse-animation' : '',
-                    isCurrentLyric ? 'current-lyric-char' : ''
+                    isCurrentLyric ? 'current-lyric-char' : '',
+                    timingSection // Add timing-based section class
                   ];
                   
                   return (

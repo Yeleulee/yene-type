@@ -3,7 +3,7 @@ import axios from 'axios';
 export interface LyricLine {
   text: string;
   startTime: number; // in seconds
-  endTime: number; // in seconds
+  endTime?: number;
 }
 
 export interface Song {
@@ -170,102 +170,196 @@ async function getVideoInfo(videoId: string): Promise<{title: string, artist: st
   }
 }
 
-// Async function to fetch lyrics for a given video ID - with improved performance
-export async function fetchLyrics(videoId: string): Promise<Song> {
+// Format time in MM:SS format
+export const formatTime = (seconds: number): string => {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+};
+
+// Enhanced lyrics fetching with multiple fallback methods
+export const fetchLyrics = async (videoId: string): Promise<Song> => {
+  console.log("Fetching lyrics for video ID:", videoId);
+  
+  // First try to get lyrics from our preferred service
   try {
-    console.time('fetchLyrics');
-    
-    // Force clean video ID - this helps with URLs that might be pasted
-    const cleanVideoId = videoId.trim().replace(/^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)/i, '').split('&')[0];
-    console.log('Processing video ID:', cleanVideoId);
-    
-    // Check cache first for faster loading (including the cleaned ID)
-    if (lyricsCache[cleanVideoId]) {
-      console.log('Cache hit for lyrics - returning immediately');
-      console.timeEnd('fetchLyrics');
-      return { ...lyricsCache[cleanVideoId] }; // Return a copy to prevent mutation issues
+    const response = await fetch(`/api/lyrics?videoId=${videoId}`);
+    if (response.ok) {
+      const data = await response.json();
+      
+      // If we got valid lyrics, return them
+      if (data.lyrics && data.lyrics.length > 0) {
+        console.log("Successfully fetched lyrics from primary source");
+        return {
+          title: data.title || 'Unknown Song',
+          artist: data.artist || 'Unknown Artist',
+          lyrics: data.lyrics
+        };
+      }
     }
-    
-    // Check if this is one of our demo songs
-    const demoVideoId = Object.keys(demoSongs).find(id => 
-      id === cleanVideoId || cleanVideoId.includes(id)
-    );
-    
-    if (demoVideoId) {
-      // We found a matching demo song
-      console.log('Found matching demo song:', demoSongs[demoVideoId].title);
-      // Cache for future use with both IDs
-      lyricsCache[cleanVideoId] = demoSongs[demoVideoId];
-      console.timeEnd('fetchLyrics');
-      return { ...demoSongs[demoVideoId] };
-    }
-    
-    // For non-demo songs, create meaningful fallback lyrics that always work
-    console.log('Creating fallback lyrics for video:', cleanVideoId);
-    
-    // Try to get video info first
-    const videoInfo = await getVideoInfo(cleanVideoId);
-    
-    // Create shorter time-spaced lyrics for faster feedback
-    const TIME_GAP = 2.5; // seconds per line (even shorter for better responsiveness)
-    const OVERLAP = 0.1; // slight overlap for smoother transitions
-    
-    // Use a subset of placeholder lyrics for faster loading
-    const generatedLyrics: LyricLine[] = placeholderLyrics.slice(0, 12).map((text, index) => {
-      const startTime = index * TIME_GAP;
-      return {
-        text,
-        startTime,
-        endTime: startTime + TIME_GAP - OVERLAP
-      };
-    });
-    
-    // Build the song object with guaranteed lyrics
-    const song = {
-      title: videoInfo.title || `Song ${cleanVideoId.substring(0, 6)}`,
-      artist: videoInfo.artist || 'YouTube Artist',
-      lyrics: generatedLyrics
-    };
-    
-    // Cache for future requests - both original and cleaned ID
-    lyricsCache[videoId] = song;
-    if (videoId !== cleanVideoId) {
-      lyricsCache[cleanVideoId] = song;
-    }
-    
-    console.timeEnd('fetchLyrics');
-    console.log('Successfully created fallback lyrics with', generatedLyrics.length, 'lines');
-    return { ...song };
   } catch (error) {
-    console.error('Error fetching lyrics:', error);
-    console.timeEnd('fetchLyrics');
-    
-    // Even more robust fallback that never fails
-    console.log('Using emergency fallback lyrics');
-    const simpleLyrics = [
-      "Welcome to Yene Type! Practice your typing skills with this song.",
-      "Focus on accuracy first, then speed will naturally follow.",
-      "Keep your fingers on the home row for better typing efficiency.",
-      "The quick brown fox jumps over the lazy dog.",
-      "Typing to music can help you develop a consistent rhythm.",
-    ];
-    
-    const fallbackSong = {
-      title: 'Typing Practice',
-      artist: 'Yene Type',
-      lyrics: simpleLyrics.map((text, index) => ({
-        text,
-        startTime: index * 2.5,
-        endTime: (index * 2.5) + 2.4
-      }))
-    };
-    
-    // Cache even the emergency fallback
-    lyricsCache[videoId] = fallbackSong;
-    
-    return { ...fallbackSong };
+    console.error("Error fetching lyrics from primary source:", error);
   }
-}
+  
+  // If primary source failed, try alternate service
+  try {
+    console.log("Trying alternate lyrics source");
+    const response = await fetch(`/api/lyrics-fallback?videoId=${videoId}`);
+    if (response.ok) {
+      const data = await response.json();
+      
+      if (data.lyrics && data.lyrics.length > 0) {
+        console.log("Successfully fetched lyrics from fallback source");
+        return {
+          title: data.title || 'Unknown Song',
+          artist: data.artist || 'Unknown Artist',
+          lyrics: data.lyrics
+        };
+      }
+    }
+  } catch (error) {
+    console.error("Error fetching lyrics from fallback source:", error);
+  }
+  
+  // Finally, use our built-in library as a last resort
+  console.log("Using built-in lyrics library as last resort");
+  const builtInSong = findBuiltInLyrics(videoId);
+  
+  if (builtInSong) {
+    console.log("Found lyrics in built-in library");
+    return builtInSong;
+  }
+  
+  // If all else fails, try to get video details to at least provide title/artist
+  try {
+    const response = await fetch(`/api/video-details?videoId=${videoId}`);
+    if (response.ok) {
+      const data = await response.json();
+      console.log("No lyrics found, but retrieved video details");
+      return {
+        title: data.title || 'Unknown Song',
+        artist: data.artist || 'Unknown Artist',
+        lyrics: []
+      };
+    }
+  } catch (error) {
+    console.error("Error fetching video details:", error);
+  }
+  
+  // Last fallback - return a placeholder
+  console.log("All lyrics sources failed, returning placeholder");
+  return {
+    title: 'Unknown Song',
+    artist: 'Unknown Artist',
+    lyrics: []
+  };
+};
+
+// Built-in lyrics database for popular songs
+const findBuiltInLyrics = (videoId: string): Song | null => {
+  // Rick Astley - Never Gonna Give You Up
+  if (videoId === 'dQw4w9WgXcQ') {
+    return {
+      title: 'Never Gonna Give You Up',
+      artist: 'Rick Astley',
+      lyrics: [
+        { text: 'We\'re no strangers to love', startTime: 18, endTime: 21 },
+        { text: 'You know the rules and so do I', startTime: 21, endTime: 24 },
+        { text: 'A full commitment\'s what I\'m thinking of', startTime: 25, endTime: 29 },
+        { text: 'You wouldn\'t get this from any other guy', startTime: 29, endTime: 34 },
+        { text: 'I just wanna tell you how I\'m feeling', startTime: 34, endTime: 39 },
+        { text: 'Gotta make you understand', startTime: 39, endTime: 43 },
+        { text: 'Never gonna give you up', startTime: 43, endTime: 46 },
+        { text: 'Never gonna let you down', startTime: 46, endTime: 49 },
+        { text: 'Never gonna run around and desert you', startTime: 49, endTime: 53 },
+        { text: 'Never gonna make you cry', startTime: 53, endTime: 56 },
+        { text: 'Never gonna say goodbye', startTime: 56, endTime: 59 },
+        { text: 'Never gonna tell a lie and hurt you', startTime: 59, endTime: 65 }
+      ]
+    };
+  }
+  
+  // Queen - Bohemian Rhapsody
+  if (videoId === 'fJ9rUzIMcZQ') {
+    return {
+      title: 'Bohemian Rhapsody',
+      artist: 'Queen',
+      lyrics: [
+        { text: 'Is this the real life?', startTime: 4, endTime: 7 },
+        { text: 'Is this just fantasy?', startTime: 7, endTime: 10 },
+        { text: 'Caught in a landslide', startTime: 10, endTime: 13 },
+        { text: 'No escape from reality', startTime: 13, endTime: 18 },
+        { text: 'Open your eyes', startTime: 18, endTime: 21 },
+        { text: 'Look up to the skies and see', startTime: 21, endTime: 26 },
+        { text: 'I\'m just a poor boy, I need no sympathy', startTime: 26, endTime: 32 },
+        { text: 'Because I\'m easy come, easy go', startTime: 32, endTime: 36 },
+        { text: 'Little high, little low', startTime: 36, endTime: 39 },
+        { text: 'Any way the wind blows doesn\'t really matter to me', startTime: 39, endTime: 45 },
+        { text: 'To me', startTime: 45, endTime: 49 }
+      ]
+    };
+  }
+  
+  // Adele - Hello
+  if (videoId === 'YQHsXMglC9A') {
+    return {
+      title: 'Hello',
+      artist: 'Adele',
+      lyrics: [
+        { text: 'Hello, it\'s me', startTime: 76, endTime: 80 },
+        { text: 'I was wondering if after all these years you\'d like to meet', startTime: 80, endTime: 87 },
+        { text: 'To go over everything', startTime: 87, endTime: 91 },
+        { text: 'They say that time\'s supposed to heal ya, but I ain\'t done much healing', startTime: 91, endTime: 98 },
+        { text: 'Hello, can you hear me?', startTime: 98, endTime: 102 },
+        { text: 'I\'m in California dreaming about who we used to be', startTime: 102, endTime: 109 },
+        { text: 'When we were younger and free', startTime: 109, endTime: 113 },
+        { text: 'I\'ve forgotten how it felt before the world fell at our feet', startTime: 113, endTime: 120 },
+        { text: 'There\'s such a difference between us', startTime: 120, endTime: 126 },
+        { text: 'And a million miles', startTime: 126, endTime: 131 }
+      ]
+    };
+  }
+  
+  // Ed Sheeran - Shape of You
+  if (videoId === 'JGwWNGJdvx8') {
+    return {
+      title: 'Shape of You',
+      artist: 'Ed Sheeran',
+      lyrics: [
+        { text: 'The club isn\'t the best place to find a lover', startTime: 12, endTime: 15 },
+        { text: 'So the bar is where I go', startTime: 15, endTime: 18 },
+        { text: 'Me and my friends at the table doing shots', startTime: 18, endTime: 21 },
+        { text: 'Drinking fast and then we talk slow', startTime: 21, endTime: 24 },
+        { text: 'Come over and start up a conversation with just me', startTime: 24, endTime: 28 },
+        { text: 'And trust me I\'ll give it a chance now', startTime: 28, endTime: 31 },
+        { text: 'Take my hand, stop, put Van the Man on the jukebox', startTime: 31, endTime: 35 },
+        { text: 'And then we start to dance, and now I\'m singing like', startTime: 35, endTime: 39 },
+        { text: 'Girl, you know I want your love', startTime: 39, endTime: 42 },
+        { text: 'Your love was handmade for somebody like me', startTime: 42, endTime: 46 }
+      ]
+    };
+  }
+  
+  // Add at least one more popular song
+  if (videoId === 'kJQP7kiw5Fk') { // Despacito
+    return {
+      title: 'Despacito',
+      artist: 'Luis Fonsi ft. Daddy Yankee',
+      lyrics: [
+        { text: 'Sí, sabes que ya llevo un rato mirándote', startTime: 20, endTime: 25 },
+        { text: 'Tengo que bailar contigo hoy', startTime: 25, endTime: 30 },
+        { text: 'Vi que tu mirada ya estaba llamándome', startTime: 30, endTime: 35 },
+        { text: 'Muéstrame el camino que yo voy', startTime: 35, endTime: 39 },
+        { text: 'Tú, tú eres el imán y yo soy el metal', startTime: 39, endTime: 44 },
+        { text: 'Me voy acercando y voy armando el plan', startTime: 44, endTime: 49 },
+        { text: 'Solo con pensarlo se acelera el pulso', startTime: 49, endTime: 54 },
+        { text: 'Ya, ya me está gustando más de lo normal', startTime: 54, endTime: 59 }
+      ]
+    };
+  }
+  
+  return null;
+};
 
 // Get the current lyric line with performance optimization
 export function getCurrentLyric(lyrics: LyricLine[], currentTime: number): LyricLine | null {
@@ -295,11 +389,4 @@ export function getUpcomingLyrics(lyrics: LyricLine[], currentTime: number, coun
   }
   
   return upcomingLyrics;
-}
-
-// Format seconds to mm:ss
-export function formatTime(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 } 

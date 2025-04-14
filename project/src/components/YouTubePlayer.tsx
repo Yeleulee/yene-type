@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useRef } from 'react';
-import YouTube, { YouTubePlayer as Player } from 'react-youtube';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import YouTube, { YouTubePlayer as Player, YouTubeEvent } from 'react-youtube';
 import { motion } from 'framer-motion';
 import { useTypingStore } from '../store/typingStore';
-import { fetchLyrics, formatTime } from '../lib/lyrics';
+import { fetchLyrics, formatTime, LyricLine } from '../lib/lyrics';
 import { 
   Music, 
   PlayCircle, 
@@ -13,12 +13,18 @@ import {
   Loader,
   Info,
   ExternalLink,
-  Youtube
+  Youtube,
+  AlertTriangle
 } from 'lucide-react';
 
 interface YouTubePlayerProps {
   videoId: string;
   isDark?: boolean;
+}
+
+interface SongInfo {
+  title: string;
+  artist: string;
 }
 
 export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
@@ -30,7 +36,7 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [songInfo, setSongInfo] = useState<{ title: string; artist: string }>({
+  const [songInfo, setSongInfo] = useState<SongInfo>({
     title: 'Loading...',
     artist: 'Please wait'
   });
@@ -39,12 +45,27 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
   const previousVideoId = useRef<string | null>(null);
   const syncAttemptsRef = useRef<number>(0);
   const initialLoadRef = useRef<boolean>(false);
-  const changeSongTimeoutRef = useRef<any>(null);
+  const changeSongTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const errorRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Clean up all timers on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        window.clearInterval(timerRef.current);
+      }
+      if (changeSongTimeoutRef.current) {
+        clearTimeout(changeSongTimeoutRef.current);
+      }
+      if (errorRetryTimeoutRef.current) {
+        clearTimeout(errorRetryTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Reset loading state and preload lyrics when video ID changes
   useEffect(() => {
     if (previousVideoId.current !== videoId) {
-      console.log("Video ID changed from", previousVideoId.current, "to", videoId);
       // Immediately reset all states
       setIsLoading(true);
       setLoadError(null);
@@ -60,8 +81,7 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
         }
       }
       
-      // Force immediate lyrics loading with 0 delay
-      console.log("New video ID detected, loading lyrics immediately");
+      // Load lyrics immediately
       loadLyrics(videoId, false);
       
       // Track the new ID
@@ -69,14 +89,19 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
     }
   }, [videoId, player]);
 
-  // The loadLyrics function with improved error handling and immediate application
-  const loadLyrics = async (videoId: string, isPreload = false) => {
+  // The loadLyrics function with improved error handling
+  const loadLyrics = useCallback(async (videoId: string, isPreload = false) => {
+    // Clear any existing error retry timeout
+    if (errorRetryTimeoutRef.current) {
+      clearTimeout(errorRetryTimeoutRef.current);
+      errorRetryTimeoutRef.current = null;
+    }
+
     try {
       if (!isPreload) {
         setIsLoading(true);
       }
       
-      console.log(`[DEBUG] Loading lyrics for video ${videoId}${isPreload ? ' (preload)' : ''}`);
       const song = await fetchLyrics(videoId);
       
       setSongInfo({
@@ -86,9 +111,6 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       
       // Ensure we have valid lyrics before proceeding
       if (song.lyrics && song.lyrics.length > 0) {
-        // Apply lyrics IMMEDIATELY for better responsiveness
-        console.log(`[DEBUG] Loaded ${song.lyrics.length} lyric lines`);
-        
         // Format lyrics better for typing practice - add proper spacing
         const enhancedLyrics = song.lyrics.map(lyric => ({
           ...lyric,
@@ -96,9 +118,8 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
         }));
         
         const combinedText = enhancedLyrics.map(lyric => lyric.text).join(' ');
-        console.log(`[DEBUG] Combined lyrics text: ${combinedText.substring(0, 50)}...`);
         
-        // Apply immediately without delay
+        // Apply lyrics to the typing store
         changeSong(enhancedLyrics, combinedText);
         initialLoadRef.current = true;
         
@@ -106,45 +127,50 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
           setIsLoading(false);
         }
         
-        console.log("[DEBUG] Lyrics ready for typing!");
+        // Set a backup timeout to re-apply lyrics if needed
+        if (changeSongTimeoutRef.current) {
+          clearTimeout(changeSongTimeoutRef.current);
+        }
         
-        // Force a small delay before attempting to apply again (redundancy to ensure it works)
-        setTimeout(() => {
-          console.log("[DEBUG] Re-applying lyrics as backup");
+        changeSongTimeoutRef.current = setTimeout(() => {
           changeSong(enhancedLyrics, combinedText);
+          changeSongTimeoutRef.current = null;
         }, 1000);
       } else {
         // Handle empty lyrics case
-        console.error("[DEBUG] No lyrics found for this song");
-        setLoadError('No lyrics found for this song. Please try another.');
-        if (!isPreload) {
-          setIsLoading(false);
-        }
+        throw new Error('No lyrics found for this song');
       }
     } catch (error) {
-      console.error('[DEBUG] Error fetching lyrics:', error);
-      setLoadError('Failed to load lyrics. Please try again or select another song.');
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Unknown error occurred';
+        
+      setLoadError(`Failed to load lyrics: ${errorMessage}. Please try another song.`);
       
       // Retry immediately after error if it's not already a retry attempt
-      if (syncAttemptsRef.current < 3) { // Increased retry attempts
-        console.log(`[DEBUG] Retrying lyrics load after error (attempt ${syncAttemptsRef.current + 1})`);
-        setTimeout(() => loadLyrics(videoId, false), 800); // Slightly longer delay for stability
+      if (syncAttemptsRef.current < 3) {
         syncAttemptsRef.current++;
+        
+        errorRetryTimeoutRef.current = setTimeout(() => {
+          loadLyrics(videoId, false);
+          errorRetryTimeoutRef.current = null;
+        }, 800);
       }
       
       if (!isPreload) {
         setIsLoading(false);
       }
     }
-  };
+  }, [changeSong]);
 
-  const toggleAudioOnly = () => {
-    setIsAudioOnly(!isAudioOnly);
-  };
+  const toggleAudioOnly = useCallback(() => {
+    setIsAudioOnly(prev => !prev);
+  }, []);
 
-  const toggleMute = () => {
+  const toggleMute = useCallback(() => {
     if (!player) return;
     
+    try {
     if (isMuted) {
       player.unMute();
       setIsMuted(false);
@@ -152,10 +178,12 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       player.mute();
       setIsMuted(true);
     }
-  };
+    } catch (error) {
+      console.warn('Error toggling mute state:', error);
+    }
+  }, [player, isMuted]);
 
-  const onReady = (event: { target: Player }) => {
-    console.log("YouTube player ready for video:", videoId);
+  const onReady = useCallback((event: YouTubeEvent) => {
     setPlayer(event.target);
     setDuration(event.target.getDuration() || 0);
     
@@ -166,22 +194,27 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
     try {
       // Faster loading with lower quality
       event.target.setPlaybackQuality('small');
+      
+      // Set playing state in typing store before starting playback
+      useTypingStore.getState().setIsPlaying(true);
+      
+      // Start playing immediately
       event.target.playVideo();
       
       // Force immediate lyrics load when player is ready
       if ((!initialLoadRef.current || syncAttemptsRef.current < 1) && videoId) {
-        console.log("Player ready but no lyrics - forcing immediate lyrics load");
         loadLyrics(videoId, false); // Not a preload - force immediate load
       }
     } catch (e) {
       console.warn("Error setting initial player state:", e);
     }
     
-    // More frequent updates for better synchronization
+    // Clear any existing timer
     if (timerRef.current) {
       window.clearInterval(timerRef.current);
     }
     
+    // Set up a timer to update the time display
     timerRef.current = window.setInterval(() => {
       try {
         const currentTime = event.target.getCurrentTime() || 0;
@@ -189,52 +222,77 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
         
         const playerState = event.target.getPlayerState();
         const isCurrentlyPlaying = playerState === 1;
-        setIsPlaying(isCurrentlyPlaying);
         
-        // Force lyrics loading if playing but no lyrics and initialization not complete
+        // Only update if the state actually changed
+        if (isPlaying !== isCurrentlyPlaying) {
+          setIsPlaying(isCurrentlyPlaying);
+          // Ensure typing store is updated when playing state changes
+          useTypingStore.getState().setIsPlaying(isCurrentlyPlaying);
+        }
+        
+        // Force lyrics loading if playing but no lyrics
         if (isCurrentlyPlaying && !initialLoadRef.current && syncAttemptsRef.current < 2) {
-          console.log(`Force reloading lyrics - sync attempt ${syncAttemptsRef.current + 1}`);
-          loadLyrics(videoId, false); // Force immediate load
+          loadLyrics(videoId, false);
           syncAttemptsRef.current++;
         }
       } catch (e) {
         console.warn("Error in player timer update:", e);
       }
-    }, 50);
-  };
+    }, 100); // Slightly less frequent updates for better performance
+  }, [videoId, isPlaying, loadLyrics, setIsPlaying]);
 
-  const onStateChange = (event: any) => {
+  const onStateChange = useCallback((event: YouTubeEvent) => {
     const playerState = event.data;
     // 1 = playing, 2 = paused, 0 = ended, 3 = buffering
-    setIsPlaying(playerState === 1);
+    const isCurrentlyPlaying = playerState === 1;
+    setIsPlaying(isCurrentlyPlaying);
+    useTypingStore.getState().setIsPlaying(isCurrentlyPlaying);
     
     // Clear loading state when video starts playing
     if (playerState === 1) {
       setIsLoading(false);
       
       // Force update the current time
-      const currentTime = event.target.getCurrentTime();
-      setCurrentTime(currentTime);
+      try {
+        const currentTime = event.target.getCurrentTime();
+        setCurrentTime(currentTime);
+      } catch (e) {
+        console.warn("Error getting current time:", e);
+      }
       
       // When playback starts but initialization not complete
       if (!initialLoadRef.current && syncAttemptsRef.current < 2) {
-        console.log(`Video playing but no lyrics - loading attempt ${syncAttemptsRef.current + 1}`);
-        loadLyrics(videoId, false); // Force immediate load
+        loadLyrics(videoId, false);
         syncAttemptsRef.current++;
       }
     }
-    
-    // Handle buffering state for user feedback
-    if (playerState === 3) {
-      console.log("Video is buffering");
-    }
-  };
+  }, [videoId, loadLyrics, setIsPlaying]);
 
-  const onError = (error: any) => {
+  const onError = useCallback((error: any) => {
     console.error("YouTube player error:", error);
-    setLoadError(`Error loading YouTube video. Please try a different song. (Error: ${error.data})`);
+    const errorCode = error?.data || 'unknown';
+    let errorMessage = 'Unknown error occurred';
+    
+    // Map YouTube error codes to human-readable messages
+    switch(errorCode) {
+      case 2:
+        errorMessage = 'Invalid video ID';
+        break;
+      case 5:
+        errorMessage = 'Video cannot be played in the player';
+        break;
+      case 100:
+        errorMessage = 'Video not found';
+        break;
+      case 101:
+      case 150:
+        errorMessage = 'Video cannot be played in embedded players';
+        break;
+    }
+    
+    setLoadError(`Error loading YouTube video: ${errorMessage}`);
     setIsLoading(false);
-  };
+  }, []);
 
   // Optimize YouTube player options for faster loading
   const opts = {
@@ -255,18 +313,6 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       enablejsapi: 1,
     },
   };
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) {
-        window.clearInterval(timerRef.current);
-      }
-      if (changeSongTimeoutRef.current) {
-        clearTimeout(changeSongTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const renderProgressBar = () => {
     const progress = duration ? (currentTime / duration) * 100 : 0;

@@ -3,17 +3,25 @@ import { Layout, Book, Trophy } from 'lucide-react';
 import { useTypingStore } from '../store/typingStore';
 import { cn } from '../lib/utils';
 
-const modes = [
+type Mode = 'video' | 'practice' | 'challenge';
+
+interface ModeOption {
+  id: Mode;
+  icon: typeof Layout;
+  label: string;
+}
+
+const modes: ModeOption[] = [
   { id: 'video', icon: Layout, label: 'Video Mode' },
   { id: 'practice', icon: Book, label: 'Practice Mode' },
   { id: 'challenge', icon: Trophy, label: 'Challenge Mode' }
-] as const;
+];
 
 export function ModeSelector() {
   const { mode, setMode } = useTypingStore();
 
   return (
-    <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
+    <div className="flex gap-2 p-1 bg-gray-100 rounded-lg" role="radiogroup" aria-label="Select typing mode">
       {modes.map(({ id, icon: Icon, label }) => (
         <button
           key={id}
@@ -24,8 +32,11 @@ export function ModeSelector() {
               ? "bg-white text-blue-600 shadow-sm"
               : "text-gray-600 hover:text-gray-900"
           )}
+          role="radio"
+          aria-checked={mode === id}
+          aria-label={label}
         >
-          <Icon className="w-4 h-4" />
+          <Icon className="w-4 h-4" aria-hidden="true" />
           <span>{label}</span>
         </button>
       ))}

@@ -2,6 +2,18 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { LyricLine } from '../lib/lyrics';
 
+export type Difficulty = 'easy' | 'medium' | 'hard';
+export type Language = 'en' | 'es' | 'fr' | 'de';
+export type Mode = 'video' | 'practice' | 'challenge';
+
+export interface HighScore {
+  date: string;
+  wpm: number;
+  accuracy: number;
+  mode: string;
+  songTitle?: string;
+}
+
 interface TypingState {
   text: string;
   typedText: string;
@@ -9,33 +21,27 @@ interface TypingState {
   accuracy: number;
   errors: number;
   isPlaying: boolean;
-  difficulty: 'easy' | 'medium' | 'hard';
-  language: 'en' | 'es' | 'fr' | 'de';
-  mode: 'video' | 'practice' | 'challenge';
+  difficulty: Difficulty;
+  language: Language;
+  mode: Mode;
   lyrics: LyricLine[];
   currentLyric: LyricLine | null;
   lastCompletedLineIndex: number;
-  practiceTexts: Record<string, string[]>;
-  highScores: Array<{
-    date: string;
-    wpm: number;
-    accuracy: number;
-    mode: string;
-    songTitle?: string;
-  }>;
+  practiceTexts: Record<Language, string[]>;
+  highScores: HighScore[];
   setText: (text: string) => void;
   setTypedText: (text: string) => void;
   setWPM: (wpm: number) => void;
   setAccuracy: (accuracy: number) => void;
   setErrors: (errors: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
-  setDifficulty: (difficulty: 'easy' | 'medium' | 'hard') => void;
-  setLanguage: (language: 'en' | 'es' | 'fr' | 'de') => void;
-  setMode: (mode: 'video' | 'practice' | 'challenge') => void;
+  setDifficulty: (difficulty: Difficulty) => void;
+  setLanguage: (language: Language) => void;
+  setMode: (mode: Mode) => void;
   setLyrics: (lyrics: LyricLine[]) => void;
   setCurrentLyric: (lyric: LyricLine | null) => void;
   completeCurrentLine: () => void;
-  addHighScore: (score: { wpm: number; accuracy: number; mode: string; songTitle?: string }) => void;
+  addHighScore: (score: Omit<HighScore, 'date'>) => void;
   reset: () => void;
   changeSong: (newLyrics: LyricLine[], newText: string) => void;
 }

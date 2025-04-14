@@ -1,66 +1,81 @@
-const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;
-const YOUTUBE_API_URL = 'https://www.googleapis.com/youtube/v3';
+import axios from 'axios';
 
-export interface YouTubeVideo {
+export interface YouTubeSearchResult {
   id: string;
   title: string;
+  artist: string;
   thumbnail: string;
-  channelTitle: string;
 }
 
-export async function searchVideos(query: string): Promise<YouTubeVideo[]> {
+// YouTube Data API v3 endpoint
+const API_KEY = 'AIzaSyAlRPh0To8uQYIPl-zA64GSqAnrjR6WYZM';
+const API_BASE_URL = 'https://www.googleapis.com/youtube/v3';
+
+/**
+ * Search for videos on YouTube using the Data API v3
+ */
+export const searchYouTubeVideos = async (query: string): Promise<YouTubeSearchResult[]> => {
+  console.log(`Searching YouTube for: "${query}"`);
+  
   try {
-    const response = await fetch(
-      `${YOUTUBE_API_URL}/search?part=snippet&q=${encodeURIComponent(
-        query
-      )}&type=video&maxResults=5&key=${YOUTUBE_API_KEY}`
-    );
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch videos');
+    const response = await axios.get(`${API_BASE_URL}/search`, {
+      params: {
+        part: 'snippet',
+        q: query,
+        type: 'video',
+        maxResults: 10,
+        key: API_KEY
+      }
+    });
+    
+    if (!response.data.items || !Array.isArray(response.data.items)) {
+      throw new Error('Invalid response format from YouTube API');
     }
-
-    const data = await response.json();
-    return data.items.map((item: any) => ({
+    
+    const results = response.data.items.map((item: any) => ({
       id: item.id.videoId,
       title: item.snippet.title,
-      thumbnail: item.snippet.thumbnails.medium.url,
-      channelTitle: item.snippet.channelTitle
+      artist: item.snippet.channelTitle,
+      thumbnail: item.snippet.thumbnails.medium.url
     }));
+    
+    console.log(`Found ${results.length} results from YouTube API`);
+    return results;
+    
   } catch (error) {
-    console.error('Error searching videos:', error);
-    return [];
+    console.error('Error searching YouTube:', error);
+    throw new Error('Failed to search YouTube. Please try again later.');
   }
-}
+};
 
-export async function getVideoSubtitles(videoId: string): Promise<string> {
+/**
+ * Get video details by ID using YouTube Data API v3
+ */
+export const getVideoDetails = async (videoId: string): Promise<YouTubeSearchResult> => {
+  console.log(`Getting details for video: ${videoId}`);
+  
   try {
-    // Get video details including caption information
-    const response = await fetch(
-      `${YOUTUBE_API_URL}/videos?part=snippet&id=${videoId}&key=${YOUTUBE_API_KEY}`
-    );
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch video details');
-    }
-
-    const data = await response.json();
+    const response = await axios.get(`${API_BASE_URL}/videos`, {
+      params: {
+        part: 'snippet',
+        id: videoId,
+        key: API_KEY
+      }
+    });
     
-    if (!data.items || data.items.length === 0) {
-      return 'No video details available. Start typing to practice...';
+    if (!response.data.items || !response.data.items[0]) {
+      throw new Error('Video not found');
     }
-
-    // For now, we'll use the video description as practice text since direct caption
-    // download is not supported through the API
-    const description = data.items[0].snippet.description;
     
-    if (!description) {
-      return 'No content available for this video. Start typing to practice...';
-    }
-
-    return description || 'Start typing to practice...';
+    const item = response.data.items[0];
+    return {
+      id: item.id,
+      title: item.snippet.title,
+      artist: item.snippet.channelTitle,
+      thumbnail: item.snippet.thumbnails.medium.url
+    };
   } catch (error) {
-    console.error('Error fetching video details:', error);
-    return 'Start typing to practice...';
+    console.error('Error getting video details:', error);
+    throw new Error('Failed to get video details. Please try again later.');
   }
-}
+};

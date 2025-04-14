@@ -22,6 +22,10 @@ function App() {
   }, []);
 
   const handleVideoSelect = (video: YouTubeVideo) => {
+    console.log("Selected video:", video);
+    // Reset the typing store first
+    useTypingStore.getState().reset();
+    // Set the video ID after resetting
     setVideoId(video.id);
   };
 

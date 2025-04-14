@@ -1,15 +1,22 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
+interface VideoResult {
+  id: string;
+  title: string;
+  artist: string;
+  thumbnail: string;
+}
+
 interface SearchResultsProps {
-  results: any[];
+  results: VideoResult[];
   onSelectVideo: (videoId: string, title: string) => void;
   isDark?: boolean;
 }
 
 export function SearchResults({ results, onSelectVideo, isDark = false }: SearchResultsProps) {
   return (
-    <div className="p-1">
+    <div className="p-1" role="listbox" aria-label="Search results">
       {results.map((result, index) => (
         <motion.div
           key={result.id}
@@ -22,11 +29,20 @@ export function SearchResults({ results, onSelectVideo, isDark = false }: Search
               : 'hover:bg-indigo-50/60 active:bg-indigo-50/80'
           }`}
           onClick={() => onSelectVideo(result.id, result.title)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onSelectVideo(result.id, result.title);
+            }
+          }}
+          role="option"
+          aria-selected={false}
+          tabIndex={0}
         >
           <div className="relative w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 shadow-sm">
             <img 
               src={result.thumbnail} 
-              alt={result.title} 
+              alt={`Thumbnail for ${result.title}`}
               className="w-full h-full object-cover"
               onError={(e) => {
                 (e.target as HTMLImageElement).src = 'https://placehold.co/96x96/indigo/white?text=YT';

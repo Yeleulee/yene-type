@@ -53,6 +53,40 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
   const syncAttemptTimeRef = useRef<number | null>(null);
   const [showDebug, setShowDebug] = useState(false);
 
+  // Enhanced focus mechanism with debounce to prevent excessive focus attempts
+  const focusTextArea = useCallback(() => {
+    if (!textareaRef.current) {
+      console.log("Focus attempt failed - no textarea ref");
+      return;
+    }
+    
+    // Clear any existing focus timeouts
+    focusTimeoutRefs.current.forEach(timeoutId => {
+      clearTimeout(timeoutId);
+    });
+    focusTimeoutRefs.current = [];
+    
+    // Immediate focus attempt
+    textareaRef.current.focus();
+    
+    // More aggressive focus - try multiple times with increasing delays
+    const delays = [100, 300, 500, 1000, 2000];
+    
+    delays.forEach(delay => {
+      const timeoutId = window.setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          hasAttemptedToFocus.current = true;
+          
+          // Force a click on the textarea as well
+          textareaRef.current.click();
+        }
+      }, delay);
+      
+      focusTimeoutRefs.current.push(timeoutId);
+    });
+  }, []);
+
   // Clear all timeouts on unmount to prevent memory leaks
   useEffect(() => {
     return () => {
@@ -82,12 +116,15 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
       // Re-focus the textarea when new lyrics are loaded
       focusTextArea();
     }
-  }, [text]);
+  }, [text, focusTextArea]);
 
-  // More aggressive sync and focus handling
+  // More aggressive sync and focus handling - optimized to reduce renders
   useEffect(() => {
-    // If music is playing but text isn't ready after a delay, try a forced sync
-    if (isPlaying && (!allLyrics || allLyrics.length === 0) && syncStatusRef.current === 'pending') {
+    // Only execute this effect if playing state or lyrics have changed
+    if (!isPlaying || allLyrics.length > 0) return;
+    
+    // If music is playing but text isn't ready, try a forced sync
+    if (syncStatusRef.current === 'pending') {
       if (!syncAttemptTimeRef.current) {
         syncAttemptTimeRef.current = Date.now();
         // Immediately attempt to sync by clearing any existing state
@@ -96,8 +133,26 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
         setStartTime(null);
         setErrors(0);
         hasAttemptedToFocus.current = false;
-        focusTextArea();
-      } else if (Date.now() - syncAttemptTimeRef.current > 2000) { // Reduced timeout
+        
+        // Force focus immediately
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          textareaRef.current.click();
+        }
+        
+        // Set up a more aggressive focus retry
+        const focusInterval = setInterval(() => {
+          if (textareaRef.current) {
+            textareaRef.current.focus();
+            textareaRef.current.click();
+          }
+        }, 100);
+        
+        // Clear the interval after 2 seconds
+        setTimeout(() => {
+          clearInterval(focusInterval);
+        }, 2000);
+      } else if (Date.now() - syncAttemptTimeRef.current > 2000) {
         // It's been more than 2 seconds and still no lyrics - try a direct reset approach
         console.log("Force sync: No lyrics after 2 seconds of playback - attempting recovery");
         
@@ -106,121 +161,84 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
         syncStatusRef.current = 'failed';
         
         // Force focus again
-        focusTextArea();
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          textareaRef.current.click();
+        }
       }
-    }
-    
-    // When lyrics arrive, mark as synced and reset the attempt time
-    if (allLyrics && allLyrics.length > 0) {
-      syncStatusRef.current = 'synced';
-      syncAttemptTimeRef.current = null;
     }
   }, [isPlaying, allLyrics, reset]);
 
-  // Enhanced focus mechanism with debounce to prevent excessive focus attempts
-  const focusTextArea = useCallback(() => {
-    if (!textareaRef.current) {
-      console.log("Focus attempt failed - no textarea ref");
-      return;
-    }
-    
-    // Clear any existing focus timeouts
-    focusTimeoutRefs.current.forEach(timeoutId => {
-      clearTimeout(timeoutId);
-    });
-    focusTimeoutRefs.current = [];
-    
-    // Immediate focus attempt
-    textareaRef.current.focus();
-    console.log("Focus attempt on typing area");
-    
-    // More aggressive focus - try multiple times with increasing delays
-    const delays = [100, 300, 500, 1000, 2000];
-    
-    delays.forEach(delay => {
-      const timeoutId = window.setTimeout(() => {
-        if (textareaRef.current) {
-          console.log(`Retry focus at ${delay}ms`);
-          textareaRef.current.focus();
-          hasAttemptedToFocus.current = true;
-          
-          // Force a click on the textarea as well
-          textareaRef.current.click();
-        }
-      }, delay);
-      
-      focusTimeoutRefs.current.push(timeoutId);
-    });
-  }, []);
-
-  // When lyrics change, combine all lyrics into one continuous text
+  // When lyrics change, combine all lyrics into one continuous text - optimized for performance
   useEffect(() => {
-    // Immediate check for lyrics presence
+    // Skip execution if lyrics array is empty or undefined
     if (!lyrics || lyrics.length === 0) {
-      console.log("No lyrics available yet - resetting typing area");
       setAllLyrics('');
       syncStatusRef.current = 'pending';
       return;
     }
     
-    // Join all lyrics with a space between each line
+    // Join all lyrics with a space between each line - use memoization to avoid recreating string
     const combinedLyrics = lyrics.map(lyric => lyric.text.trim()).join(' ');
     
-    console.log(`Lyrics received: ${lyrics.length} lines, ${combinedLyrics.length} characters`);
-    
-    // Always force update immediately
-    setAllLyrics(combinedLyrics);
-    setCurrentPosition(0);
-    setTypedText('');
-    setStartTime(null);
-    setIsComplete(false);
-    hasAttemptedToFocus.current = false;
-    syncStatusRef.current = 'synced';
-    
-    // Force focus on text area
-    focusTextArea();
-    
-    // Force scroll to start position
-    if (lyricsRef.current) {
-      lyricsRef.current.scrollLeft = 0;
-    }
-  }, [lyrics, focusTextArea]);
-
-  // Handle typing stats calculations
-  useEffect(() => {
-    if (typedText.length === 1 && !startTime) {
-      setStartTime(Date.now());
+    // Update only if the combined lyrics actually changed
+    if (combinedLyrics !== allLyrics) {
+      setAllLyrics(combinedLyrics);
+      setCurrentPosition(0);
+      setTypedText('');
+      setStartTime(null);
       setIsComplete(false);
-    }
-
-    if (startTime && allLyrics) {
-      const timeElapsed = (Date.now() - startTime) / 1000;
-      const newWPM = calculateWPM(typedText.length, timeElapsed, errors);
-      const newAccuracy = calculateAccuracy(
-        typedText.length - errors,
-        typedText.length
-      );
+      syncStatusRef.current = 'synced';
       
-      setWPM(newWPM);
-      setAccuracy(newAccuracy);
-
-      // Check if typing is complete - but only if not already marked complete
-      if (typedText.length >= allLyrics.length && !isComplete) {
-        setIsComplete(true);
-        addHighScore({
-          wpm: newWPM,
-          accuracy: newAccuracy,
-          mode: 'lyrics',
-          songTitle: allLyrics.substring(0, 20) + '...'
-        });
+      // Force focus on text area
+      if (!hasAttemptedToFocus.current) {
+        hasAttemptedToFocus.current = true;
+        focusTextArea();
+      }
+      
+      // Force scroll to start position
+      if (lyricsRef.current) {
+        lyricsRef.current.scrollLeft = 0;
       }
     }
-  }, [typedText, errors, startTime, allLyrics, addHighScore, isComplete, setAccuracy, setWPM]);
+  }, [lyrics, allLyrics, focusTextArea]);
+
+  // Handle typing stats calculations - extracted into a separate effect for better performance
+  useEffect(() => {
+    // Only run calculations if we're actively typing
+    if (!startTime || !allLyrics || typedText.length === 0) return;
+    
+    const timeElapsed = (Date.now() - startTime) / 1000;
+    const newWPM = calculateWPM(typedText.length, timeElapsed, errors);
+    const newAccuracy = calculateAccuracy(
+      typedText.length - errors,
+      typedText.length
+    );
+    
+    // Only update state if values have actually changed
+    if (Math.abs(wpm - newWPM) >= 1) {
+      setWPM(newWPM);
+    }
+    
+    if (Math.abs(accuracy - newAccuracy) >= 1) {
+      setAccuracy(newAccuracy);
+    }
+
+    // Check if typing is complete - but only if not already marked complete
+    if (typedText.length >= allLyrics.length && !isComplete) {
+      setIsComplete(true);
+      addHighScore({
+        wpm: newWPM,
+        accuracy: newAccuracy,
+        mode: 'lyrics',
+        songTitle: allLyrics.substring(0, 20) + '...'
+      });
+    }
+  }, [typedText, errors, startTime, allLyrics, wpm, accuracy, isComplete, addHighScore, setAccuracy, setWPM]);
 
   // Enhanced typing handler with better performance
   const handleTyping = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     if (!allLyrics) {
-      console.log("[DEBUG] Typing attempted but no lyrics loaded");
       return;
     }
     
@@ -229,9 +247,9 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
     // Performance optimization: only update if text actually changed
     if (newTypedText === typedText) return;
     
-    // Log first character typed for debugging
-    if (typedText.length === 0 && newTypedText.length > 0) {
-      console.log(`[DEBUG] First character typed: "${newTypedText}"`);
+    // If this is the first character typed, set the start time
+    if (typedText.length === 0 && newTypedText.length === 1) {
+      setStartTime(Date.now());
     }
     
     setTypedText(newTypedText);
@@ -240,6 +258,7 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
     // Calculate errors - optimized for performance
     let newErrors = 0;
     const minLength = Math.min(newTypedText.length, allLyrics.length);
+    
     for (let i = 0; i < minLength; i++) {
       if (newTypedText[i] !== allLyrics[i]) {
         newErrors++;
@@ -251,27 +270,9 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
       newErrors += newTypedText.length - allLyrics.length;
     }
     
-    setErrors(newErrors);
-
-    // Optimized auto-scroll with smoother scrolling
-    if (lyricsRef.current) {
-      // Calculate dynamic character width based on container width and visible content
-      const containerWidth = lyricsRef.current.offsetWidth;
-      const avgCharWidth = Math.max(8, Math.min(12, containerWidth / 60)); // Adaptive width between 8-12px
-      
-      const charsVisible = Math.floor(containerWidth / avgCharWidth);
-      const scrollPosition = Math.max(0, newTypedText.length - charsVisible / 3);
-      
-      lyricsRef.current.scrollTo({
-        left: scrollPosition * avgCharWidth,
-        behavior: 'smooth'
-      });
-    }
-    
-    // Keep the focus on the typing area
-    if (textareaRef.current && document.activeElement !== textareaRef.current) {
-      console.log("[DEBUG] Re-focusing textarea during typing");
-      textareaRef.current.focus();
+    // Only update errors state if it changed
+    if (newErrors !== errors) {
+      setErrors(newErrors);
     }
   };
 

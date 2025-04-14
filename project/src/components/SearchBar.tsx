@@ -2,11 +2,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Youtube, Loader, X, Music, History, TrendingUp } from 'lucide-react';
 import { SearchResults } from './SearchResults';
-import axios from 'axios';
+import { searchYouTubeVideos } from '../lib/youtube';
 
 interface SearchBarProps {
   onSelectVideo: (videoId: string) => void;
   isDark?: boolean;
+}
+
+// Define the result type directly in the component
+interface VideoResult {
+  id: string;
+  title: string;
+  artist: string;
+  thumbnail: string;
 }
 
 // Helper function to extract video ID from various YouTube URL formats
@@ -31,174 +39,56 @@ const extractVideoId = (url: string): string | null => {
   return null;
 };
 
-// Popular songs for immediate selection
-const popularSongs = [
-  { id: 'dQw4w9WgXcQ', title: 'Never Gonna Give You Up', artist: 'Rick Astley' },
-  { id: 'fJ9rUzIMcZQ', title: 'Bohemian Rhapsody', artist: 'Queen' },
-  { id: 'JGwWNGJdvx8', title: 'Shape of You', artist: 'Ed Sheeran' },
-  { id: 'kJQP7kiw5Fk', title: 'Despacito', artist: 'Luis Fonsi ft. Daddy Yankee' },
-  { id: 'OPf0YbXqDm0', title: 'Uptown Funk', artist: 'Mark Ronson ft. Bruno Mars' },
-  { id: 'YQHsXMglC9A', title: 'Hello', artist: 'Adele' }
+// Built-in song database
+const songDatabase: VideoResult[] = [
+  { id: 'dQw4w9WgXcQ', title: 'Rick Astley - Never Gonna Give You Up', artist: 'Rick Astley', thumbnail: 'https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg' },
+  { id: 'fJ9rUzIMcZQ', title: 'Queen - Bohemian Rhapsody', artist: 'Queen Official', thumbnail: 'https://img.youtube.com/vi/fJ9rUzIMcZQ/mqdefault.jpg' },
+  { id: 'JGwWNGJdvx8', title: 'Ed Sheeran - Shape of You', artist: 'Ed Sheeran', thumbnail: 'https://img.youtube.com/vi/JGwWNGJdvx8/mqdefault.jpg' },
+  { id: 'kJQP7kiw5Fk', title: 'Luis Fonsi - Despacito ft. Daddy Yankee', artist: 'Luis Fonsi', thumbnail: 'https://img.youtube.com/vi/kJQP7kiw5Fk/mqdefault.jpg' },
+  { id: 'OPf0YbXqDm0', title: 'Mark Ronson - Uptown Funk ft. Bruno Mars', artist: 'Mark Ronson', thumbnail: 'https://img.youtube.com/vi/OPf0YbXqDm0/mqdefault.jpg' },
+  { id: 'YQHsXMglC9A', title: 'Adele - Hello', artist: 'Adele', thumbnail: 'https://img.youtube.com/vi/YQHsXMglC9A/mqdefault.jpg' },
+  { id: '09R8_2nJtjg', title: 'Maroon 5 - Sugar', artist: 'Maroon 5', thumbnail: 'https://img.youtube.com/vi/09R8_2nJtjg/mqdefault.jpg' },
+  { id: 'y6120QOlsfU', title: 'Darude - Sandstorm', artist: 'Darude', thumbnail: 'https://img.youtube.com/vi/y6120QOlsfU/mqdefault.jpg' },
+  { id: 'lYBUbBu4W08', title: 'Billie Eilish - bad guy', artist: 'Billie Eilish', thumbnail: 'https://img.youtube.com/vi/lYBUbBu4W08/mqdefault.jpg' },
+  { id: '0yW7w8F2TVA', title: 'The Weeknd - Blinding Lights', artist: 'The Weeknd', thumbnail: 'https://img.youtube.com/vi/0yW7w8F2TVA/mqdefault.jpg' },
+  { id: 'RgKAFK5djSk', title: 'Wiz Khalifa - See You Again ft. Charlie Puth', artist: 'Wiz Khalifa', thumbnail: 'https://img.youtube.com/vi/RgKAFK5djSk/mqdefault.jpg' },
+  { id: 'JRfuAukYTKg', title: 'Tones and I - Dance Monkey', artist: 'Tones and I', thumbnail: 'https://img.youtube.com/vi/JRfuAukYTKg/mqdefault.jpg' },
+  { id: 'hT_nvWreIhg', title: 'OneRepublic - Counting Stars', artist: 'OneRepublic', thumbnail: 'https://img.youtube.com/vi/hT_nvWreIhg/mqdefault.jpg' },
+  { id: 'PT2_F-1esPk', title: 'The Chainsmokers - Closer ft. Halsey', artist: 'The Chainsmokers', thumbnail: 'https://img.youtube.com/vi/PT2_F-1esPk/mqdefault.jpg' },
+  { id: '2Vv-BfVoq4g', title: 'Ed Sheeran - Perfect', artist: 'Ed Sheeran', thumbnail: 'https://img.youtube.com/vi/2Vv-BfVoq4g/mqdefault.jpg' },
+  { id: 'papuvlVeZg8', title: 'Maroon 5 - Girls Like You ft. Cardi B', artist: 'Maroon 5', thumbnail: 'https://img.youtube.com/vi/papuvlVeZg8/mqdefault.jpg' },
+  { id: 'ApXoWvfEYVU', title: 'Post Malone - Better Now', artist: 'Post Malone', thumbnail: 'https://img.youtube.com/vi/ApXoWvfEYVU/mqdefault.jpg' },
+  { id: 'nfs8NYg7yQM', title: 'Eminem - Rap God', artist: 'Eminem', thumbnail: 'https://img.youtube.com/vi/nfs8NYg7yQM/mqdefault.jpg' },
+  { id: '31crA53Dgu0', title: 'Drake - Hotline Bling', artist: 'Drake', thumbnail: 'https://img.youtube.com/vi/31crA53Dgu0/mqdefault.jpg' },
+  { id: 'xTlNMmZKwpA', title: 'BTS - Dynamite', artist: 'BTS', thumbnail: 'https://img.youtube.com/vi/xTlNMmZKwpA/mqdefault.jpg' },
+  { id: 'aJOTlE1K90k', title: 'Katy Perry - Roar', artist: 'Katy Perry', thumbnail: 'https://img.youtube.com/vi/aJOTlE1K90k/mqdefault.jpg' },
+  { id: 'QYh6mYIJG2Y', title: 'Ariana Grande - 7 rings', artist: 'Ariana Grande', thumbnail: 'https://img.youtube.com/vi/QYh6mYIJG2Y/mqdefault.jpg' },
+  { id: 'CevxZvSJLk8', title: 'Katy Perry - Roar', artist: 'Katy Perry', thumbnail: 'https://img.youtube.com/vi/CevxZvSJLk8/mqdefault.jpg' }
 ];
 
-// Expanded song database for search results
-const expandedSongs = [
-  { id: 'dQw4w9WgXcQ', title: 'Never Gonna Give You Up', artist: 'Rick Astley', thumbnail: 'https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg' },
-  { id: 'fJ9rUzIMcZQ', title: 'Bohemian Rhapsody', artist: 'Queen', thumbnail: 'https://img.youtube.com/vi/fJ9rUzIMcZQ/mqdefault.jpg' },
-  { id: 'CZLuZStJaAQ', title: 'Shape of You', artist: 'Ed Sheeran', thumbnail: 'https://img.youtube.com/vi/CZLuZStJaAQ/mqdefault.jpg' },
-  { id: 'JGwWNGJdvx8', title: 'Shape of You', artist: 'Ed Sheeran', thumbnail: 'https://img.youtube.com/vi/JGwWNGJdvx8/mqdefault.jpg' },
-  { id: 'pRpeEdMmmQ0', title: 'Uptown Funk', artist: 'Mark Ronson ft. Bruno Mars', thumbnail: 'https://img.youtube.com/vi/pRpeEdMmmQ0/mqdefault.jpg' },
-  { id: 'OPf0YbXqDm0', title: 'Uptown Funk', artist: 'Mark Ronson ft. Bruno Mars', thumbnail: 'https://img.youtube.com/vi/OPf0YbXqDm0/mqdefault.jpg' },
-  { id: 'lp-EO5I60KA', title: 'Stressed Out', artist: 'Twenty One Pilots', thumbnail: 'https://img.youtube.com/vi/lp-EO5I60KA/mqdefault.jpg' },
-  { id: 'YQHsXMglC9A', title: 'Hello', artist: 'Adele', thumbnail: 'https://img.youtube.com/vi/YQHsXMglC9A/mqdefault.jpg' },
+// Popular songs subset for display when no search is active
+const popularSongs: VideoResult[] = [
+  { id: 'dQw4w9WgXcQ', title: 'Rick Astley - Never Gonna Give You Up', artist: 'Rick Astley', thumbnail: 'https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg' },
+  { id: 'fJ9rUzIMcZQ', title: 'Queen - Bohemian Rhapsody', artist: 'Queen', thumbnail: 'https://img.youtube.com/vi/fJ9rUzIMcZQ/mqdefault.jpg' },
+  { id: 'JGwWNGJdvx8', title: 'Ed Sheeran - Shape of You', artist: 'Ed Sheeran', thumbnail: 'https://img.youtube.com/vi/JGwWNGJdvx8/mqdefault.jpg' },
   { id: 'kJQP7kiw5Fk', title: 'Despacito', artist: 'Luis Fonsi ft. Daddy Yankee', thumbnail: 'https://img.youtube.com/vi/kJQP7kiw5Fk/mqdefault.jpg' },
-  { id: 'RgKAFK5djSk', title: 'See You Again', artist: 'Wiz Khalifa ft. Charlie Puth', thumbnail: 'https://img.youtube.com/vi/RgKAFK5djSk/mqdefault.jpg' },
-  { id: '09R8_2nJtjg', title: 'Sugar', artist: 'Maroon 5', thumbnail: 'https://img.youtube.com/vi/09R8_2nJtjg/mqdefault.jpg' },
-  { id: 'Zm0f0oF5VP0', title: 'Sorry', artist: 'Justin Bieber', thumbnail: 'https://img.youtube.com/vi/Zm0f0oF5VP0/mqdefault.jpg' },
-  { id: 'NywWB67Z7zQ', title: 'This Is What You Came For', artist: 'Calvin Harris ft. Rihanna', thumbnail: 'https://img.youtube.com/vi/NywWB67Z7zQ/mqdefault.jpg' },
-  { id: 'tt2k8PGm-TI', title: 'Baaghi 2: Mundiyan', artist: 'Tiger Shroff', thumbnail: 'https://img.youtube.com/vi/tt2k8PGm-TI/mqdefault.jpg' },
-  { id: 'papuvlVeZg8', title: 'Girls Like You', artist: 'Maroon 5 ft. Cardi B', thumbnail: 'https://img.youtube.com/vi/papuvlVeZg8/mqdefault.jpg' }
+  { id: 'OPf0YbXqDm0', title: 'Uptown Funk', artist: 'Mark Ronson ft. Bruno Mars', thumbnail: 'https://img.youtube.com/vi/OPf0YbXqDm0/mqdefault.jpg' },
+  { id: 'YQHsXMglC9A', title: 'Hello', artist: 'Adele', thumbnail: 'https://img.youtube.com/vi/YQHsXMglC9A/mqdefault.jpg' }
 ];
 
-// Expanded song database - used for searching
-const songDatabase = [
-  {
-    id: 'dQw4w9WgXcQ',
-    title: 'Never Gonna Give You Up',
-    artist: 'Rick Astley',
-    thumbnail: 'https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg'
-  },
-  {
-    id: 'fJ9rUzIMcZQ',
-    title: 'Bohemian Rhapsody',
-    artist: 'Queen',
-    thumbnail: 'https://img.youtube.com/vi/fJ9rUzIMcZQ/mqdefault.jpg'
-  },
-  {
-    id: 'kJQP7kiw5Fk',
-    title: 'Despacito',
-    artist: 'Luis Fonsi ft. Daddy Yankee',
-    thumbnail: 'https://img.youtube.com/vi/kJQP7kiw5Fk/mqdefault.jpg'
-  },
-  {
-    id: 'JGwWNGJdvx8',
-    title: 'Shape of You',
-    artist: 'Ed Sheeran',
-    thumbnail: 'https://img.youtube.com/vi/JGwWNGJdvx8/mqdefault.jpg'
-  },
-  {
-    id: 'RgKAFK5djSk',
-    title: 'See You Again',
-    artist: 'Wiz Khalifa ft. Charlie Puth',
-    thumbnail: 'https://img.youtube.com/vi/RgKAFK5djSk/mqdefault.jpg'
-  },
-  {
-    id: '9bZkp7q19f0',
-    title: 'Gangnam Style',
-    artist: 'PSY',
-    thumbnail: 'https://img.youtube.com/vi/9bZkp7q19f0/mqdefault.jpg'
-  },
-  {
-    id: 'OPf0YbXqDm0',
-    title: 'Uptown Funk',
-    artist: 'Mark Ronson ft. Bruno Mars',
-    thumbnail: 'https://img.youtube.com/vi/OPf0YbXqDm0/mqdefault.jpg'
-  },
-  {
-    id: 'hT_nvWreIhg',
-    title: 'Counting Stars',
-    artist: 'OneRepublic',
-    thumbnail: 'https://img.youtube.com/vi/hT_nvWreIhg/mqdefault.jpg'
-  },
-  {
-    id: 'PT2_F-1esPk',
-    title: 'Closer',
-    artist: 'The Chainsmokers ft. Halsey',
-    thumbnail: 'https://img.youtube.com/vi/PT2_F-1esPk/mqdefault.jpg'
-  },
-  {
-    id: 'YQHsXMglC9A',
-    title: 'Hello',
-    artist: 'Adele',
-    thumbnail: 'https://img.youtube.com/vi/YQHsXMglC9A/mqdefault.jpg'
-  },
-  {
-    id: 'y6120QOlsfU',
-    title: 'Sandstorm',
-    artist: 'Darude',
-    thumbnail: 'https://img.youtube.com/vi/y6120QOlsfU/mqdefault.jpg'
-  },
-  {
-    id: 'lYBUbBu4W08',
-    title: 'Bad Guy',
-    artist: 'Billie Eilish',
-    thumbnail: 'https://img.youtube.com/vi/lYBUbBu4W08/mqdefault.jpg'
-  },
-  {
-    id: '0yW7w8F2TVA',
-    title: 'Blinding Lights',
-    artist: 'The Weeknd',
-    thumbnail: 'https://img.youtube.com/vi/0yW7w8F2TVA/mqdefault.jpg'
-  },
-  {
-    id: 'JRfuAukYTKg',
-    title: 'Dance Monkey',
-    artist: 'Tones and I',
-    thumbnail: 'https://img.youtube.com/vi/JRfuAukYTKg/mqdefault.jpg'
-  },
-  {
-    id: 'Io0fBr1XBUA',
-    title: 'Thunder',
-    artist: 'Imagine Dragons',
-    thumbnail: 'https://img.youtube.com/vi/Io0fBr1XBUA/mqdefault.jpg'
-  },
-  {
-    id: 'Xn676-fLq7I',
-    title: 'Look What You Made Me Do',
-    artist: 'Taylor Swift',
-    thumbnail: 'https://img.youtube.com/vi/Xn676-fLq7I/mqdefault.jpg'
-  },
-  {
-    id: 'DlexmDDSDZ0',
-    title: "We Don't Talk About Bruno",
-    artist: 'Encanto Cast',
-    thumbnail: 'https://img.youtube.com/vi/DlexmDDSDZ0/mqdefault.jpg'
-  },
-  {
-    id: 'KM38OFDKU20',
-    title: 'Watermelon Sugar',
-    artist: 'Harry Styles',
-    thumbnail: 'https://img.youtube.com/vi/KM38OFDKU20/mqdefault.jpg'
-  },
-  {
-    id: 'iCkYw3cRwLo',
-    title: 'Let It Go',
-    artist: 'Idina Menzel',
-    thumbnail: 'https://img.youtube.com/vi/iCkYw3cRwLo/mqdefault.jpg'
-  },
-  {
-    id: 'e-ORhEE9VVg',
-    title: 'Blank Space',
-    artist: 'Taylor Swift',
-    thumbnail: 'https://img.youtube.com/vi/e-ORhEE9VVg/mqdefault.jpg'
-  }
-];
+const API_BASE_URL = '/api/youtube';
 
 export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<VideoResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
-  const [searchHistory, setSearchHistory] = useState<any[]>([]);
-  const [showPopular, setShowPopular] = useState(false);
+  const [searchHistory, setSearchHistory] = useState<VideoResult[]>([]);
+  const [showPopular, setShowPopular] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  
-  // Default mock results for when search finds nothing
-  const mockResults = [
-    { id: 'dQw4w9WgXcQ', title: 'Rick Astley - Never Gonna Give You Up', artist: 'Rick Astley', thumbnail: 'https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg' },
-    { id: 'fJ9rUzIMcZQ', title: 'Queen - Bohemian Rhapsody', artist: 'Queen', thumbnail: 'https://img.youtube.com/vi/fJ9rUzIMcZQ/mqdefault.jpg' }
-  ];
+  const searchTimeoutRef = useRef<number | null>(null);
   
   // Load search history from localStorage
   useEffect(() => {
@@ -213,7 +103,7 @@ export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
   }, []);
   
   // Save search history to localStorage
-  const saveToHistory = (result: any) => {
+  const saveToHistory = (result: VideoResult) => {
     const updatedHistory = [result, ...searchHistory.filter(item => item.id !== result.id)].slice(0, 5);
     setSearchHistory(updatedHistory);
     localStorage.setItem('searchHistory', JSON.stringify(updatedHistory));
@@ -233,146 +123,94 @@ export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
     };
   }, []);
   
-  // Search for videos using YouTube API or handle direct links
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
-    
+  // Perform the search directly within the component
+  const performSearch = async (query: string) => {
     setIsLoading(true);
+    setError(null);
     setShowResults(true);
     
-    // Check if input might be a direct YouTube URL or video ID
-    const videoId = extractVideoId(searchQuery);
-    
-    if (videoId) {
-      // Handle direct YouTube URL
-      try {
-        // Check if we have this video in our database
-        const existingVideo = songDatabase.find(song => song.id === videoId);
-        
-        if (existingVideo) {
-          const result = existingVideo;
-          setResults([result]);
-          setIsLoading(false);
-          
-          // Save directly using the result we just found
-          saveToHistory(result);
-      } else {
-          // For unknown videos, create a placeholder
-          const mockResult = {
-            id: videoId,
-            title: `YouTube Video (ID: ${videoId})`,
-            artist: 'Unknown Artist',
-            thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
-          };
-          
-          setResults([mockResult]);
-          setIsLoading(false);
-          saveToHistory(mockResult);
-        }
-      } catch (error) {
-        console.error('Error fetching video details:', error);
+    try {
+      if (!query || query.trim().length < 2) {
         setResults([]);
+        setShowPopular(true);
         setIsLoading(false);
+        return;
       }
-    } else {
-      // Handle regular search by searching our song database
-      try {
-        // Simulate network delay
-        setTimeout(() => {
-          // Filter songDatabase based on search query
-          const queryLower = searchQuery.toLowerCase();
-          const queryWords = queryLower.split(/\s+/).filter(word => word.length > 0);
-          
-          // Score and filter songs
-          const scoredResults = songDatabase
-            .map(song => {
-              const titleLower = (song.title || '').toLowerCase();
-              const artistLower = (song.artist || '').toLowerCase();
-              
-              // Start with a base score
-              let score = 0;
-              
-              // Exact matches get highest score
-              if (titleLower === queryLower) score += 100;
-              if (artistLower === queryLower) score += 80;
-              
-              // Title contains full query
-              if (titleLower.includes(queryLower)) score += 60;
-              
-              // Artist contains full query
-              if (artistLower.includes(queryLower)) score += 50;
-              
-              // Check for individual word matches
-              queryWords.forEach(word => {
-                if (word.length < 3) return; // Skip very short words
-                
-                if (titleLower.includes(word)) score += 15;
-                if (artistLower.includes(word)) score += 12;
-                
-                // Bonus for word at the beginning
-                if (titleLower.startsWith(word)) score += 10;
-                if (artistLower.startsWith(word)) score += 8;
-              });
-              
-              // Give a small base score to ensure some results appear
-              if (queryLower.length > 0 && (titleLower.length > 0 || artistLower.length > 0)) {
-                score += 1;
-              }
-              
-              return { ...song, score };
-            })
-            .filter(song => song.score > 0)
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 15); // Show more results (up to 15)
-          
-          // If no relevant results, show some random songs from database
-          if (scoredResults.length === 0) {
-            // Get 5 random songs from the database
-            const randomSongs = [...songDatabase]
-              .sort(() => 0.5 - Math.random())
-              .slice(0, 5)
-              .map(song => ({ ...song, score: 1 }));
-            
-            setResults(randomSongs.length > 0 ? randomSongs : mockResults);
-          } else {
-            setResults(scoredResults);
-          }
-          
-          setIsLoading(false);
-    }, 500);
-      } catch (error) {
-        console.error('Error searching for videos:', error);
-        setResults([]);
-        setIsLoading(false);
-      }
+      
+      const results = await searchYouTubeVideos(query);
+      setResults(results);
+      setShowPopular(false);
+    } catch (error) {
+      console.error('Search error:', error);
+      setError('Failed to search for videos. Please try again.');
+      setResults([]);
+      setShowPopular(false);
+    } finally {
+      setIsLoading(false);
     }
   };
   
+  // Debounced search
+  const debouncedSearch = (query: string) => {
+    // Clear any existing timeout
+    if (searchTimeoutRef.current) {
+      window.clearTimeout(searchTimeoutRef.current);
+    }
+    
+    // Set loading state immediately
+    setIsLoading(true);
+    setShowResults(true);
+    
+    // Set new timeout
+    searchTimeoutRef.current = window.setTimeout(() => {
+      performSearch(query);
+      searchTimeoutRef.current = null;
+    }, 300);
+  };
+  
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        window.clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
+  
   const handleSelectVideo = (videoId: string, title: string) => {
+    console.log("Video selected:", videoId, title);
     onSelectVideo(videoId);
     setShowResults(false);
-    setSearchQuery('');
     
-    // Save to history
-    saveToHistory({
-      id: videoId,
-      title,
-      thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
-    });
+    // Find the selected video in results to save to history
+    const selectedVideo = results.find(result => result.id === videoId);
+    if (selectedVideo) {
+      saveToHistory(selectedVideo);
+    }
   };
   
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-    if (e.target.value === '') {
+    const newQuery = e.target.value;
+    setSearchQuery(newQuery);
+    setShowResults(true);
+    
+    if (newQuery === '') {
       setShowPopular(true);
+      setResults([]);
+      setError(null);
+      setIsLoading(false);
     } else {
-      setShowPopular(false);
+      debouncedSearch(newQuery);
     }
   };
   
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      handleSearch();
+      if (searchTimeoutRef.current) {
+        window.clearTimeout(searchTimeoutRef.current);
+        searchTimeoutRef.current = null;
+      }
+      performSearch(searchQuery);
     }
   };
   
@@ -380,10 +218,17 @@ export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
     setSearchQuery('');
     setShowResults(false);
     setResults([]);
+    setError(null);
+    setIsLoading(false);
     if (searchInputRef.current) {
       searchInputRef.current.focus();
     }
     setShowPopular(true);
+    
+    if (searchTimeoutRef.current) {
+      window.clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
+    }
   };
 
   return (
@@ -411,6 +256,7 @@ export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
             className={`flex-1 bg-transparent text-base border-none outline-none ${
               isDark ? 'text-white placeholder:text-slate-400' : 'text-slate-800 placeholder:text-slate-400'
           }`}
+            aria-label="Search for videos"
         />
           {searchQuery && (
             <button 
@@ -418,17 +264,19 @@ export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
               className={`p-1 rounded-full ${
                 isDark ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-500 hover:bg-slate-100'
               }`}
+              aria-label="Clear search"
             >
               <X size={16} />
             </button>
           )}
           <button 
-            onClick={handleSearch}
+            onClick={() => performSearch(searchQuery)}
             className={`ml-2 rounded-lg p-2 ${
               isDark 
                 ? 'bg-indigo-600 hover:bg-indigo-700 text-white' 
                 : 'bg-indigo-500 hover:bg-indigo-600 text-white'
             }`}
+            aria-label="Search"
           >
             {isLoading ? <Loader size={16} className="animate-spin" /> : <Search size={16} />}
           </button>
@@ -452,6 +300,20 @@ export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
               }`}>
                 <Loader className="animate-spin mr-3" size={20} />
                 <span>Searching for videos...</span>
+              </div>
+            ) : error ? (
+              <div className={`flex flex-col items-center justify-center p-8 ${
+                isDark ? 'text-slate-300' : 'text-slate-600'
+              }`}>
+                <p className="text-center mb-2">{error}</p>
+                <button 
+                  onClick={clearSearch}
+                  className={`mt-2 px-4 py-2 rounded-lg text-sm ${
+                    isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-200 hover:bg-slate-300'
+                  }`}
+                >
+                  Clear Search
+                </button>
               </div>
             ) : results.length > 0 ? (
               <div className="max-h-96 overflow-y-auto">

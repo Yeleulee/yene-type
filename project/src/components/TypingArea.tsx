@@ -325,30 +325,43 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
     // If this is the first character typed, set the start time
     if (typedText.length === 0 && newTypedText.length === 1) {
       setStartTime(Date.now());
+      // Also ensure the video is playing
+      if (!isPlaying) {
+        useTypingStore.getState().setIsPlaying(true);
+      }
     }
     
-    // Check if the new character is an error
-    const lastCharIndex = newTypedText.length - 1;
-    if (newTypedText.length > typedText.length && 
-        lastCharIndex < allLyrics.length && 
-        newTypedText[lastCharIndex] !== allLyrics[lastCharIndex]) {
-      // Play error sound if enabled
-      if (enableErrorSound && errorSoundRef.current) {
-        errorSoundRef.current.currentTime = 0;
-        errorSoundRef.current.play().catch(err => console.log("Error playing sound:", err));
+    // Check if the user is typing in the correct position
+    if (newTypedText.length > typedText.length) {
+      // User added character(s)
+      const lastCharIndex = newTypedText.length - 1;
+      if (lastCharIndex < allLyrics.length && newTypedText[lastCharIndex] !== allLyrics[lastCharIndex]) {
+        // Play error sound if enabled
+        if (enableErrorSound && errorSoundRef.current) {
+          errorSoundRef.current.currentTime = 0;
+          errorSoundRef.current.play().catch(err => console.log("Error playing sound:", err));
+        }
       }
     }
     
     setTypedText(newTypedText);
     setCurrentPosition(newTypedText.length);
 
-    // Calculate errors - optimized for performance
+    // Calculate errors more accurately
     let newErrors = 0;
     const minLength = Math.min(newTypedText.length, allLyrics.length);
     
     for (let i = 0; i < minLength; i++) {
       if (newTypedText[i] !== allLyrics[i]) {
         newErrors++;
+      }
+    }
+    
+    // Add errors for missing characters (if user deleted a correct section)
+    if (newTypedText.length < typedText.length && newTypedText.length < allLyrics.length) {
+      // Count as errors only if we're actively typing (not resetting)
+      if (startTime !== null) {
+        newErrors += Math.min(typedText.length, allLyrics.length) - newTypedText.length;
       }
     }
     
@@ -360,6 +373,12 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
     // Only update errors state if it changed
     if (newErrors !== errors) {
       setErrors(newErrors);
+    }
+    
+    // Check if this input completed a line
+    if (currentLyric && newTypedText.includes(currentLyric.text) && 
+        !typedText.includes(currentLyric.text)) {
+      useTypingStore.getState().completeCurrentLine();
     }
   };
 
@@ -388,20 +407,47 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
       const index = lyrics.findIndex(lyric => lyric.text === currentLyric.text);
       if (index !== -1 && index !== activeLineIndex) {
         setActiveLineIndex(index);
+
+        // Handle real-time sync adjustments for better accuracy
+        if (currentTime > 0 && index > 0) {
+          // Calculate how far we are through the current lyric
+          const currentLineDuration = currentLyric.endTime - currentLyric.startTime;
+          const elapsedInCurrentLine = currentTime - currentLyric.startTime;
+          const progressPercent = elapsedInCurrentLine / currentLineDuration;
+          
+          // If we're less than 10% into a new line, it might be premature
+          // If we're over 90% through a line, the next one might be late
+          // Only log extreme timing issues for debugging
+          if (progressPercent < 0.1) {
+            console.log(`Sync: Line ${index} appears to start early (${Math.round(progressPercent * 100)}%)`);
+          } else if (progressPercent > 0.9) {
+            console.log(`Sync: Line ${index} appears to end late (${Math.round(progressPercent * 100)}%)`);
+          }
+        }
         
         // Scroll to the current lyric if we have a reference to the container
         if (lyricsRef.current) {
           const lyricElements = lyricsRef.current.querySelectorAll('.lyric-line');
-          if (lyricElements[index]) {
+          if (lyricElements && lyricElements.length > index && lyricElements[index]) {
             lyricElements[index].scrollIntoView({
               behavior: 'smooth',
               block: 'center'
             });
           }
         }
+        
+        // If user hasn't started typing yet, set the cursor position to the start of this lyric
+        if (typedText.length === 0 || !startTime) {
+          // Find the position of this lyric text in the combined lyrics
+          const allLyricsText = lyrics.map(l => l.text).join(' ');
+          const position = allLyricsText.indexOf(currentLyric.text);
+          if (position >= 0) {
+            setCurrentPosition(position);
+          }
+        }
       }
     }
-  }, [currentLyric, lyrics, activeLineIndex]);
+  }, [currentLyric, lyrics, activeLineIndex, typedText, startTime, currentTime]);
   
   // Sync with currentTime changes
   useEffect(() => {

@@ -118,22 +118,56 @@ export const useTypingStore = create<TypingState>()(
         // Find the lyric that corresponds to the current time
         let activeIndex = -1;
         
+        // Smart look-ahead/look-behind window to improve sync
+        // This helps handle slight timing mismatches or inaccurate estimations
+        const LOOK_AHEAD_WINDOW = 0.5; // seconds
+        
         for (let i = 0; i < lyrics.length; i++) {
           const lyric = lyrics[i];
-          const nextLyric = i < lyrics.length - 1 ? lyrics[i + 1] : null;
           
-          // Check if the current time is between this lyric's start time and the next lyric's start time
-          if (lyric.startTime <= time && (!nextLyric || nextLyric.startTime > time || time <= lyric.endTime)) {
+          // Primary check: is time within this lyric's exact start and end time
+          if (time >= lyric.startTime && time <= lyric.endTime) {
             activeIndex = i;
             break;
+          }
+          
+          // Look-ahead check: is the time very close to the start of the next lyric?
+          // This helps when our timing estimations are slightly off
+          if (i < lyrics.length - 1) {
+            const nextLyric = lyrics[i + 1];
+            if (time > lyric.endTime && time < nextLyric.startTime) {
+              // We're between lyrics - check if we're close to the next one
+              if (nextLyric.startTime - time <= LOOK_AHEAD_WINDOW) {
+                // We're within the look-ahead window of the next lyric
+                activeIndex = i + 1;
+                break;
+              } else {
+                // We're between lyrics but not close enough to the next one
+                // Stay on the current line until closer to the next
+                activeIndex = i;
+                break;
+              }
+            }
           }
         }
         
         // If we found a match and it's different from the current active lyric
         if (activeIndex >= 0 && activeIndex !== get().activeLyricIndex) {
+          // Store the time when this lyric became active for sync analysis
+          const activationTime = Date.now();
+          
           set({ 
             activeLyricIndex: activeIndex,
             currentLyric: lyrics[activeIndex]
+          });
+          
+          // Optional - track when lyrics change to analyze timing patterns
+          // console.log(`Lyric #${activeIndex} activated at ${time.toFixed(1)}s (video) / ${new Date().toFixed(0)}ms (local)`);
+        } else if (activeIndex === -1 && get().activeLyricIndex !== -1) {
+          // No active lyric found but we have one set - clear it
+          set({
+            activeLyricIndex: -1,
+            currentLyric: null
           });
         }
       },

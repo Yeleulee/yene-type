@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useTypingStore } from '../store/typingStore';
 import { fetchLyrics, formatTime, LyricLine } from '../lib/lyrics';
+import { LyricsInfo } from './LyricsInfo';
 import { 
   Music, 
   PlayCircle, 
@@ -145,6 +146,14 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
   const loadLyrics = useCallback(async (videoId: string) => {
     try {
       console.log("YouTubePlayer: Loading lyrics for video ID:", videoId);
+      setIsLoading(true);
+      
+      // Make it clear we're trying to fetch from Musixmatch API
+      setSongInfo({
+        title: 'Loading lyrics from Musixmatch...',
+        artist: 'Please wait'
+      });
+      
       const song = await fetchLyrics(videoId);
       
       setSongInfo({
@@ -352,6 +361,9 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
           </div>
         )}
       </div>
+      
+      {/* Add Lyrics Info Component */}
+      <LyricsInfo videoId={videoId} isDark={isDark} />
       
       {/* Song Details */}
       <div className="p-4">

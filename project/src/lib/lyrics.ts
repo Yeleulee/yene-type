@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { fetchRealLyrics } from './lyricsApi';
 
 export interface LyricLine {
   text: string;
@@ -197,11 +198,34 @@ export async function fetchLyrics(videoId: string): Promise<Song> {
       // Cache for future use with both IDs
       lyricsCache[cleanVideoId] = demoSongs[demoVideoId];
       console.timeEnd('fetchLyrics');
+      
+      // Validate the lyrics
+      if (!demoSongs[demoVideoId].lyrics.length) {
+        throw new Error('Demo song has no lyrics');
+      }
+      
       return { ...demoSongs[demoVideoId] };
     }
     
+    // Try to fetch real lyrics from Musixmatch
+    console.log('Attempting to fetch real lyrics from API...');
+    const realLyrics = await fetchRealLyrics(cleanVideoId);
+    
+    if (realLyrics && realLyrics.lyrics.length > 0) {
+      console.log('Successfully fetched real lyrics from API!');
+      console.timeEnd('fetchLyrics');
+      
+      // Cache the real lyrics for future use
+      lyricsCache[cleanVideoId] = realLyrics;
+      if (videoId !== cleanVideoId) {
+        lyricsCache[videoId] = realLyrics;
+      }
+      
+      return { ...realLyrics };
+    }
+    
     // For non-demo songs, create meaningful fallback lyrics that always work
-    console.log('Creating fallback lyrics for video:', cleanVideoId);
+    console.log('Could not fetch real lyrics, creating fallback lyrics for video:', cleanVideoId);
     
     // Try to get video info first
     const videoInfo = await getVideoInfo(cleanVideoId);
@@ -219,6 +243,11 @@ export async function fetchLyrics(videoId: string): Promise<Song> {
         endTime: startTime + TIME_GAP - OVERLAP
       };
     });
+    
+    // Validate that we have lyrics
+    if (!generatedLyrics.length) {
+      throw new Error('Failed to generate lyrics');
+    }
     
     // Build the song object with guaranteed lyrics
     const song = {
@@ -250,13 +279,14 @@ export async function fetchLyrics(videoId: string): Promise<Song> {
       "Typing to music can help you develop a consistent rhythm.",
     ];
     
+    // Create a failsafe song with guaranteed timing
     const fallbackSong = {
       title: 'Typing Practice',
       artist: 'Yene Type',
       lyrics: simpleLyrics.map((text, index) => ({
         text,
-        startTime: index * 2.5,
-        endTime: (index * 2.5) + 2.4
+        startTime: index * 3.0, // Longer gaps for emergency fallback
+        endTime: (index * 3.0) + 2.9
       }))
     };
     
@@ -272,13 +302,36 @@ export function getCurrentLyric(lyrics: LyricLine[], currentTime: number): Lyric
   // Quick early return for empty array to avoid unnecessary loop
   if (!lyrics || lyrics.length === 0) return null;
   
-  // Binary search would be more efficient for large lyrics arrays
-  // but for typical song length, a simple loop is sufficient
+  // Find the first lyric where current time is within its time range
   for (const line of lyrics) {
+    // Check if current time is within the start and end time of this lyric
     if (currentTime >= line.startTime && currentTime <= line.endTime) {
       return line;
     }
   }
+  
+  // If no exact match, look for the closest upcoming lyric if we're between lyrics
+  if (currentTime > 0) {
+    // Find the next upcoming lyric
+    let closestUpcoming: LyricLine | null = null;
+    let minDiff = Number.MAX_VALUE;
+    
+    for (const line of lyrics) {
+      if (line.startTime > currentTime) {
+        const diff = line.startTime - currentTime;
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestUpcoming = line;
+        }
+      }
+    }
+    
+    // If we're very close to the next lyric (within 0.5 seconds), return it
+    if (closestUpcoming && minDiff < 0.5) {
+      return closestUpcoming;
+    }
+  }
+  
   return null;
 }
 
@@ -302,4 +355,135 @@ export function formatTime(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = Math.floor(seconds % 60);
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Adjust lyrics timing based on song duration to provide better sync
+ */
+export function adjustLyricsTiming(lyrics: LyricLine[], songDuration: number): LyricLine[] {
+  if (!lyrics || lyrics.length === 0 || !songDuration || songDuration <= 0) {
+    return lyrics;
+  }
+
+  // Analyze song structure to make a smarter decision about intro time
+  const lyricCount = lyrics.length;
+  
+  // Calculate intro time based on song duration and complexity
+  // Longer songs typically have longer intros
+  let introTime: number;
+  if (songDuration < 120) {
+    introTime = Math.min(10, songDuration * 0.1); // 10% of short songs, max 10 seconds
+  } else if (songDuration > 360) {
+    introTime = Math.min(30, songDuration * 0.08); // 8% of long songs, max 30 seconds
+  } else {
+    introTime = Math.min(20, songDuration * 0.07); // 7% of medium songs, max 20 seconds
+  }
+  
+  // Reserve time for outro - typically 5-10% of song length
+  const outroTime = Math.min(20, songDuration * 0.05);
+  
+  // Available time for lyrics
+  const availableDuration = songDuration - introTime - outroTime;
+  
+  // Handle very short songs or songs with many lyrics lines
+  if (availableDuration / lyrics.length < 1.5) {
+    // Not enough time for comfortable reading
+    introTime = Math.min(5, songDuration * 0.05);
+    const newAvailableDuration = songDuration - introTime - 5;
+    
+    // Calculate minimum time needed per line
+    const secondsPerLine = Math.max(1, newAvailableDuration / lyrics.length);
+    
+    return lyrics.map((line, index) => ({
+      ...line,
+      startTime: introTime + (index * secondsPerLine),
+      endTime: introTime + ((index + 1) * secondsPerLine) - 0.1
+    }));
+  }
+  
+  // Analyze lyrics content for pacing decisions
+  // Look for chorus patterns (repeated identical or nearly identical lines)
+  const choruses = findChorusPatterns(lyrics.map(line => line.text));
+  
+  // Calculate complexity factor based on line lengths
+  const lineLengths = lyrics.map(line => line.text.length);
+  const avgLineLength = lineLengths.reduce((sum, len) => sum + len, 0) / lyrics.length;
+  const maxLineLength = Math.max(...lineLengths);
+  const minLineLength = Math.min(...lineLengths);
+  
+  // Calculate dynamic timing for each line based on its length and content
+  let totalAllocatedTime = 0;
+  const lineDurations: number[] = [];
+  
+  // First pass: calculate raw durations based on line length and content
+  for (let i = 0; i < lyrics.length; i++) {
+    const line = lyrics[i];
+    const text = line.text;
+    
+    // Length-based factor (longer lines need more time)
+    const lengthFactor = Math.max(0.6, Math.min(2.0, text.length / avgLineLength));
+    
+    // Content-based factors
+    const wordCount = text.split(/\s+/).length;
+    
+    // More words = more complex to type
+    const wordFactor = wordCount > 10 ? 1.3 : 
+                      wordCount > 7 ? 1.1 : 
+                      wordCount > 4 ? 1.0 : 0.9;
+    
+    // Check if this is part of the chorus (give slightly less time to repeated sections)
+    const chorusFactor = choruses.includes(i) ? 0.9 : 1.0;
+    
+    // Base time adjusted by all factors
+    const baseDuration = 1.5 + (lengthFactor * wordFactor * chorusFactor * 1.5);
+    lineDurations.push(baseDuration);
+    totalAllocatedTime += baseDuration;
+  }
+  
+  // Second pass: scale all durations to fit available time
+  const scaleFactor = availableDuration / totalAllocatedTime;
+  const scaledDurations = lineDurations.map(duration => duration * scaleFactor);
+  
+  // Create timed lyrics with natural pacing
+  const timedLyrics: LyricLine[] = [];
+  let currentTime = introTime;
+  
+  for (let i = 0; i < lyrics.length; i++) {
+    const duration = scaledDurations[i];
+    timedLyrics.push({
+      ...lyrics[i],
+      startTime: currentTime,
+      endTime: currentTime + duration - 0.1
+    });
+    currentTime += duration;
+  }
+  
+  return timedLyrics;
+}
+
+/**
+ * Helper function to find repeated lyrics patterns (likely choruses)
+ * Returns array of indices that are part of chorus sections
+ */
+function findChorusPatterns(lines: string[]): number[] {
+  const chorus: number[] = [];
+  const lineMap = new Map<string, number[]>();
+  
+  // Build a map of line text to their indices
+  lines.forEach((line, index) => {
+    const simplified = line.toLowerCase().trim();
+    if (!lineMap.has(simplified)) {
+      lineMap.set(simplified, []);
+    }
+    lineMap.get(simplified)?.push(index);
+  });
+  
+  // Find lines that repeat multiple times
+  lineMap.forEach((indices, text) => {
+    if (indices.length > 1) {
+      chorus.push(...indices);
+    }
+  });
+  
+  return chorus;
 } 

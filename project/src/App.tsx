@@ -23,13 +23,15 @@ function App() {
 
   const handleVideoSelect = (videoId: string) => {
     console.log("App: Video selected - ID:", videoId);
-    console.log("App: Current videoId state:", videoId);
+    
     // Reset the typing store first
     useTypingStore.getState().reset();
     console.log("App: Typing store reset");
+    
     // Set the video ID after resetting
     setVideoId(videoId);
     console.log("App: Video ID set");
+    
     // Set isPlaying to true to start the video
     useTypingStore.getState().setIsPlaying(true);
     console.log("App: Playing state set to true");
@@ -351,69 +353,91 @@ function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-6">
-        <div className="mb-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mx-auto max-w-3xl text-center"
+        <div className="container mx-auto px-4 py-8 max-w-6xl">
+          <motion.div 
+            className={`mb-8 p-4 md:p-6 rounded-xl ${
+              isDark ? 'bg-[#24283b]/70' : 'bg-white/90 shadow-sm'
+            }`}
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
           >
             <motion.h2 
-              className={`text-2xl md:text-3xl font-bold mb-2 ${isDark ? 'text-white' : 'text-gray-800'}`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.2 }}
+              className={`text-xl md:text-2xl font-bold mb-4 ${
+                isDark ? 'text-gray-100' : 'text-gray-800'
+              }`}
+              variants={itemVariants}
             >
-              Type to the Rhythm of Your Favorite Songs
+              Choose a song to type along with
             </motion.h2>
-            <motion.p
-              className={`${isDark ? 'text-gray-400' : 'text-gray-600'} max-w-2xl mx-auto mb-6`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
-            >
-              Enhance your typing skills while enjoying music. Search for any song, follow along with the lyrics, and improve your speed!
-            </motion.p>
+            
+            <motion.div variants={itemVariants}>
+              <SearchBar onSelectVideo={handleVideoSelect} isDark={isDark} />
+            </motion.div>
           </motion.div>
-
-          <motion.div 
-            className="mx-auto max-w-3xl mb-6"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-          >
-            <SearchBar onSelectVideo={handleVideoSelect} isDark={isDark} />
-          </motion.div>
-        </div>
-        
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-          className="grid grid-cols-1 lg:grid-cols-12 gap-6"
-        >
-          <motion.div variants={itemVariants} className="lg:col-span-5 min-h-[400px]">
-            <div className="sticky top-[100px]">
-              {videoId ? (
-                <YouTubePlayer videoId={videoId} isDark={isDark} />
-              ) : (
-                <div className={`w-full aspect-video rounded-xl flex flex-col items-center justify-center gap-4 ${
-                  isDark ? 'bg-[#24283b]' : 'bg-white/80 shadow-lg shadow-indigo-500/5'
-                }`}>
-                  <Headphones className={`w-16 h-16 ${isDark ? 'text-[#7aa2f7]' : 'text-indigo-600'} opacity-70`} />
-                  <div className="text-center px-6">
-                    <h2 className="text-xl font-semibold mb-2">Ready to Start?</h2>
-                    <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} max-w-md`}>
-                      Search for a song above and start improving your typing speed with music!
-                    </p>
-                  </div>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {videoId ? (
+              <>
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5 }}
+                  className={`rounded-xl overflow-hidden ${
+                    isDark 
+                      ? 'bg-[#24283b]/70 shadow-lg shadow-black/20' 
+                      : 'bg-white shadow-md shadow-black/5'
+                  }`}
+                >
+                  <YouTubePlayer videoId={videoId} isDark={isDark} />
+                </motion.div>
+                
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.2 }}
+                  className={`rounded-xl ${
+                    isDark 
+                      ? 'bg-[#24283b]/70 shadow-lg shadow-black/20' 
+                      : 'bg-white shadow-md shadow-black/5'
+                  }`}
+                >
+                  <TypingArea isDark={isDark} />
+                </motion.div>
+              </>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.5 }}
+                className={`col-span-1 lg:col-span-2 p-8 rounded-xl text-center ${
+                  isDark 
+                    ? 'bg-[#24283b]/70' 
+                    : 'bg-white/90 shadow-sm'
+                }`}
+              >
+                <div className="max-w-md mx-auto">
+                  <motion.div 
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ delay: 0.3, duration: 0.5 }}
+                    className={`w-20 h-20 rounded-2xl mx-auto mb-6 flex items-center justify-center ${
+                      isDark ? 'bg-indigo-500/20' : 'bg-indigo-100'
+                    }`}
+                  >
+                    <Music2 className={`w-10 h-10 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} />
+                  </motion.div>
+                  <h3 className={`text-xl md:text-2xl font-bold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-800'}`}>
+                    Search for a song to start typing
+                  </h3>
+                  <p className={`mb-6 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Type along with song lyrics in real-time. Choose a song to begin your typing practice.
+                  </p>
                 </div>
-              )}
-            </div>
-          </motion.div>
-          <motion.div variants={itemVariants} className="lg:col-span-7">
-            <TypingArea isDark={isDark} />
-          </motion.div>
-        </motion.div>
+              </motion.div>
+            )}
+          </div>
+        </div>
       </main>
 
       {/* Footer */}

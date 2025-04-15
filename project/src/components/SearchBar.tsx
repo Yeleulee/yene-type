@@ -142,16 +142,31 @@ export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
         return;
       }
       
-      const results = await searchYouTubeVideos(query);
-      setResults(results);
-      setShowPopular(false);
-      } catch (error) {
-      console.error('Search error:', error);
-      setError('Failed to search for videos. Please try again.');
-        setResults([]);
-      setShowPopular(false);
-    } finally {
+      // Check if the query is a YouTube URL and extract the ID
+      const videoId = extractVideoId(query);
+      if (videoId) {
+        // Direct video ID/URL detected - immediately select this video
+        handleSelectVideo(videoId, `Video ID: ${videoId}`);
         setIsLoading(false);
+        return;
+      }
+      
+      // Regular search
+      const results = await searchYouTubeVideos(query);
+      
+      if (results.length === 0) {
+        setError('No videos found. Try another search term.');
+      } else {
+        setResults(results);
+        setShowPopular(false);
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+      setError('Failed to search for videos. Please try again or use a direct YouTube URL.');
+      setResults([]);
+      setShowPopular(true);
+    } finally {
+      setIsLoading(false);
     }
   };
   
@@ -261,19 +276,32 @@ export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
         </div>
         
         <div className="flex-1 flex border-b border-slate-200 dark:border-slate-700 px-1 pb-1.5">
-        <input
+        <div className={`flex items-center gap-2 w-full px-3 py-2 rounded-xl border ${
+          isDark
+            ? 'bg-[#1a1b26] border-[#414868] text-gray-100 placeholder-gray-500'
+            : 'bg-white border-gray-200 text-gray-800 placeholder-gray-400'
+        } focus-within:ring-2 ${
+          isDark ? 'focus-within:ring-indigo-500/50' : 'focus-within:ring-indigo-500/30'
+        } transition-all duration-200`}>
+          {isLoading ? (
+            <Loader className={`w-4 h-4 ${isDark ? 'text-indigo-400' : 'text-indigo-600'} animate-spin`} />
+          ) : (
+            <Search className={`w-4 h-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`} />
+          )}
+          <input
             ref={searchInputRef}
-          type="text"
+            type="text"
+            placeholder="Search for a song or paste YouTube URL"
             value={searchQuery}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            onClick={() => setShowResults(true)}
-            placeholder="Search for YouTube videos or paste a link"
-            className={`flex-1 bg-transparent text-base border-none outline-none ${
-              isDark ? 'text-white placeholder:text-slate-400' : 'text-slate-800 placeholder:text-slate-400'
-          }`}
-            aria-label="Search for videos"
-        />
+            onFocus={() => setShowResults(true)}
+            className={`flex-1 bg-transparent outline-none border-none text-sm ${
+              isDark ? 'placeholder-gray-500' : 'placeholder-gray-400'
+            }`}
+            aria-label="Search for a song"
+          />
+        </div>
           {searchQuery && (
             <button 
               onClick={clearSearch}

@@ -46,7 +46,7 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
   const initialLoadRef = useRef<boolean>(false);
 
   // Create YouTube iframe API URL with better parameters
-  const youtubeUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1&modestbranding=1&rel=0&playsinline=1&vq=small&disablekb=0&iv_load_policy=3&fs=0&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}&widget_referrer=${encodeURIComponent(window.location.href)}&host=https://www.youtube.com`;
+  const youtubeUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1&modestbranding=1&rel=0&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}&widget_referrer=${encodeURIComponent(window.location.href)}`;
 
   // Load lyrics when video ID changes
   useEffect(() => {
@@ -156,41 +156,11 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       if (song.lyrics && song.lyrics.length > 0) {
         console.log("YouTubePlayer: Lyrics loaded successfully, lines:", song.lyrics.length);
         
-        // Format lyrics for typing practice with improved handling
-        const enhancedLyrics = song.lyrics
-          .filter(lyric => lyric.text && lyric.text.trim().length > 0) // Filter out empty lyrics
-          .map((lyric, index, array) => {
-            // Set start times for lyrics that are missing them
-            if (lyric.startTime === undefined || lyric.startTime < 0) {
-              // If it's first lyric with no time, assume it starts at beginning
-              if (index === 0) {
-                lyric.startTime = 0;
-              } else {
-                // Calculate based on previous lyric and estimate 4 seconds per line
-                const prevLyric = array[index - 1];
-                lyric.startTime = prevLyric.startTime ? prevLyric.startTime + 4 : index * 4;
-              }
-            }
-            
-            // Ensure all lyrics have end times
-            if (lyric.endTime === undefined || lyric.endTime <= lyric.startTime) {
-              // If there's a next lyric, use its start time as this one's end time
-              if (index < array.length - 1 && array[index + 1].startTime) {
-                lyric.endTime = array[index + 1].startTime;
-              } else {
-                // Otherwise approximate 4 seconds per line
-                lyric.endTime = lyric.startTime + 4;
-              }
-            }
-            
-            return {
-              ...lyric,
-              text: lyric.text.trim()
-            };
-          });
-        
-        // Sort lyrics by start time to ensure proper sequencing
-        enhancedLyrics.sort((a, b) => a.startTime - b.startTime);
+        // Format lyrics for typing practice
+        const enhancedLyrics = song.lyrics.map(lyric => ({
+          ...lyric,
+          text: lyric.text.trim()
+        }));
         
         const combinedText = enhancedLyrics.map(lyric => lyric.text).join(' ');
         
@@ -204,17 +174,7 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
           changeSong(enhancedLyrics, combinedText);
         }, 500);
       } else {
-        // Fall back to generating simple lyrics from the title if no lyrics found
-        const fallbackLyrics = generateFallbackLyrics(song.title);
-        if (fallbackLyrics.length > 0) {
-          console.log("YouTubePlayer: Using fallback lyrics based on title");
-          const combinedText = fallbackLyrics.map(lyric => lyric.text).join(' ');
-          changeSong(fallbackLyrics, combinedText);
-          initialLoadRef.current = true;
-          setIsLoading(false);
-        } else {
-          throw new Error('No lyrics found for this song');
-        }
+        throw new Error('No lyrics found for this song');
       }
     } catch (error) {
       console.error("YouTubePlayer: Error loading lyrics:", error);
@@ -226,39 +186,6 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
       setIsLoading(false);
     }
   }, [changeSong]);
-
-  // Generate fallback lyrics from title if no lyrics are found
-  const generateFallbackLyrics = (title: string): LyricLine[] => {
-    if (!title) return [];
-    
-    // Split the title by common separators
-    const parts = title.split(/[-–—:|]/);
-    
-    if (parts.length > 1) {
-      // If title has parts like "Artist - Song", use that
-      return parts.map((part, index) => ({
-        text: part.trim(),
-        startTime: index * 5, // 5 seconds per part
-        endTime: (index + 1) * 5
-      }));
-    } else {
-      // Otherwise, split the title into phrases
-      const words = title.split(' ');
-      const chunks = [];
-      
-      // Group words into chunks of 3-5 words
-      for (let i = 0; i < words.length; i += 4) {
-        const chunk = words.slice(i, i + 4).join(' ');
-        chunks.push(chunk);
-      }
-      
-      return chunks.map((chunk, index) => ({
-        text: chunk,
-        startTime: index * 4, // 4 seconds per chunk
-        endTime: (index + 1) * 4
-      }));
-    }
-  };
 
   // Toggle audio-only mode
   const toggleAudioOnly = useCallback(() => {
@@ -287,21 +214,6 @@ export function YouTubePlayer({ videoId, isDark = false }: YouTubePlayerProps) {
     // Notify typing store that video has loaded
     useTypingStore.getState().setVideoLoaded(true);
     
-    // Attempt to start playing the video using iframe API
-    if (iframeRef.current && iframeRef.current.contentWindow) {
-      try {
-        // Send play command to the iframe
-        iframeRef.current.contentWindow.postMessage(
-          JSON.stringify({
-            event: 'command',
-            func: 'playVideo'
-          }),
-          '*'
-        );
-      } catch (e) {
-        console.warn('Error starting video playback:', e);
-      }
-    }
   }, [setIsPlaying]);
   
   return (

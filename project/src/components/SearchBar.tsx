@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Youtube, Loader, X, Music, History, TrendingUp } from 'lucide-react';
 import { SearchResults } from './SearchResults';
@@ -95,31 +95,6 @@ export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
   const syncAttemptsRef = useRef<number>(0);
   const initialLoadRef = useRef<boolean>(true);
   
-  // Reset focus to search when needed
-  const focusSearch = useCallback(() => {
-    if (searchInputRef.current) {
-      searchInputRef.current.focus();
-    }
-  }, []);
-  
-  // Make the search bar keyboard accessible after video plays
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // If user presses '/' or 's' key without any modifiers, focus the search bar
-      if ((e.key === '/' || e.key === 's') && 
-          !e.ctrlKey && !e.altKey && !e.metaKey && 
-          document.activeElement?.tagName !== 'INPUT') {
-        e.preventDefault();
-        focusSearch();
-        // Clear current search to start fresh
-        setSearchQuery('');
-      }
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [focusSearch]);
-  
   // Load search history from localStorage
   useEffect(() => {
     const history = localStorage.getItem('searchHistory');
@@ -170,13 +145,13 @@ export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
       const results = await searchYouTubeVideos(query);
       setResults(results);
       setShowPopular(false);
-    } catch (error) {
+      } catch (error) {
       console.error('Search error:', error);
       setError('Failed to search for videos. Please try again.');
-      setResults([]);
+        setResults([]);
       setShowPopular(false);
     } finally {
-      setIsLoading(false);
+        setIsLoading(false);
     }
   };
   
@@ -230,7 +205,6 @@ export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
     }
   };
   
-  // Handle input change with improved focus handling
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newQuery = e.target.value;
     setSearchQuery(newQuery);
@@ -274,22 +248,15 @@ export function SearchBar({ onSelectVideo, isDark = false }: SearchBarProps) {
   };
 
   return (
-    <div 
-      ref={containerRef} 
-      className="relative w-full max-w-3xl mx-auto" 
-      onClick={() => setShowResults(true)} // Show results when clicking anywhere in container
-    >
+    <div ref={containerRef} className="relative w-full max-w-3xl mx-auto">
       <div className={`flex items-center mb-4 p-3 rounded-xl ${
         isDark 
-          ? 'bg-slate-800/80 shadow-md shadow-black/20 focus-within:ring-2 focus-within:ring-indigo-500/50' 
-          : 'bg-white shadow-md shadow-indigo-100/60 focus-within:ring-2 focus-within:ring-indigo-500/30'
+          ? 'bg-slate-800/80 shadow-md shadow-black/20' 
+          : 'bg-white shadow-md shadow-indigo-100/60'
       }`}>
-        <div 
-          className={`w-10 h-10 flex-shrink-0 rounded-lg flex items-center justify-center mr-3 ${
-            isDark ? 'bg-indigo-500/20' : 'bg-indigo-100'
-          }`}
-          onClick={focusSearch} // Focus search when clicking on icon
-        >
+        <div className={`w-10 h-10 flex-shrink-0 rounded-lg flex items-center justify-center mr-3 ${
+          isDark ? 'bg-indigo-500/20' : 'bg-indigo-100'
+        }`}>
           <Youtube className={isDark ? 'text-indigo-400' : 'text-indigo-600'} size={18} />
         </div>
         

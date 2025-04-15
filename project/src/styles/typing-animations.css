@@ -182,8 +182,8 @@
 
 /* Add a strong highlight pulse effect for syncing */
 @keyframes highlight-pulse-anim {
-  0% { background-color: rgba(99, 102, 241, 0.4); }
-  100% { background-color: rgba(99, 102, 241, 0.6); }
+  0% { background-color: rgba(99, 102, 241, 0.8); color: white; transform: scale(1.1); }
+  100% { background-color: rgba(99, 102, 241, 0.1); color: inherit; transform: scale(1); }
 }
 
 .highlight-pulse {
@@ -228,28 +228,22 @@
 
 /* Section highlighting for sync with lyrics */
 .current-section {
-  color: #ffffff !important; /* White text for better contrast */
-  font-weight: 600;
-  opacity: 1;
-  position: relative;
-  background-color: rgba(99, 102, 241, 0.4); /* Brighter indigo background */
-  padding: 0 2px;
+  background-color: rgba(255, 215, 0, 0.3);
+  animation: highlight-pulse-anim 1s infinite alternate;
+  font-weight: bold;
   border-radius: 3px;
-  box-shadow: 0 0 4px rgba(99, 102, 241, 0.5);
-  text-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
-  z-index: 5;
-  animation: highlight-pulse-anim 1.5s infinite alternate ease-in-out;
+  padding: 0 1px;
+  position: relative;
+  z-index: 2;
 }
 
 .past-section {
-  color: #a0aec0; /* Light gray - less emphasis */
-  opacity: 0.7;
+  color: rgba(255, 255, 255, 0.6);
   text-decoration: none;
 }
 
 .future-section {
-  color: currentColor;
-  opacity: 0.5;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 /* Improve text readability during typing */
@@ -272,150 +266,4 @@
 @keyframes cursor-blink {
   0%, 100% { border-color: transparent; }
   50% { border-color: yellow; }
-}
-
-/* Cursor animation */
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-/* Shake animation for incorrect characters */
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-2px); }
-  75% { transform: translateX(2px); }
-}
-
-/* Pulse animation for current character */
-@keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
-}
-
-/* Highlight animation */
-@keyframes highlight {
-  0% { background-color: rgba(99, 102, 241, 0.2); }
-  100% { background-color: transparent; }
-}
-
-/* Character states */
-.char-correct {
-  color: #10b981; /* Green */
-}
-
-.char-incorrect {
-  color: #ef4444; /* Red */
-  animation: shake 0.2s ease-in-out;
-  text-decoration: underline;
-}
-
-.char-active {
-  color: currentColor;
-  opacity: 0.9;
-}
-
-.char-next {
-  color: currentColor;
-  opacity: 0.7;
-}
-
-.char-inactive {
-  color: currentColor;
-  opacity: 0.5;
-}
-
-.char-current {
-  position: relative;
-}
-
-/* Cursor highlight */
-.cursor-highlight::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  background-color: #6366f1; /* Indigo */
-  animation: blink 1s infinite;
-}
-
-/* Current character background */
-.current-char-bg {
-  background-color: rgba(99, 102, 241, 0.1);
-}
-
-/* Highlight for current lyric */
-.highlight-text {
-  animation: highlight 2s;
-}
-
-.current-lyric-char {
-  font-weight: 500;
-}
-
-/* Pulse animation */
-.pulse-animation {
-  animation: pulse 1s infinite;
-}
-
-/* Scrollbar styling */
-.scrollbar-dark::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.scrollbar-dark::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 4px;
-}
-
-.scrollbar-dark::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.5);
-  border-radius: 4px;
-}
-
-.scrollbar-dark::-webkit-scrollbar-thumb:hover {
-  background: rgba(99, 102, 241, 0.7);
-}
-
-/* Timing-based section styling */
-.past-section {
-  color: #a0aec0; /* Light gray - less emphasis */
-  opacity: 0.7;
-  text-decoration: none;
-}
-
-.current-section {
-  color: #ffffff !important; /* White text for better contrast */
-  font-weight: 600;
-  opacity: 1;
-  position: relative;
-  background-color: rgba(99, 102, 241, 0.4); /* Brighter indigo background */
-  padding: 0 2px;
-  border-radius: 3px;
-  box-shadow: 0 0 4px rgba(99, 102, 241, 0.5);
-  text-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
-  z-index: 5;
-  animation: highlight-pulse-anim 1.5s infinite alternate ease-in-out;
-}
-
-.future-section {
-  color: currentColor;
-  opacity: 0.5;
-}
-
-/* Dark mode adjustments */
-:global(.dark) .past-section {
-  color: #4a5568;
-}
-
-:global(.dark) .current-section {
-  color: #ffffff !important;
-  background-color: rgba(99, 102, 241, 0.5);
-}
-
-:global(.dark) .future-section {
-  color: #718096;
 } 

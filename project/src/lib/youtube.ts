@@ -8,7 +8,7 @@ export interface YouTubeSearchResult {
 }
 
 // YouTube Data API v3 endpoint
-const API_KEY = 'AIzaSyAlRPh0To8uQYIPl-zA64GSqAnrjR6WYZM';
+const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || 'AIzaSyAlRPh0To8uQYIPl-zA64GSqAnrjR6WYZM';
 const API_BASE_URL = 'https://www.googleapis.com/youtube/v3';
 
 /**

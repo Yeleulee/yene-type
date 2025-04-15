@@ -532,45 +532,22 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
                       // Clear all highlights first
                       el.classList.remove('current-lyric-char');
                       el.classList.remove('highlight-text');
-                      el.classList.remove('current-section');
-                      el.classList.remove('past-section');
-                      el.classList.remove('future-section');
                       
                       // Then add highlights for current lyric only
                       if (idx >= lyricPosition && idx < lyricPosition + lyric.text.length) {
                         el.classList.add('current-lyric-char');
-                        el.classList.add('current-section');
                         el.classList.add('highlight-text');
-                      } else if (idx < lyricPosition) {
-                        el.classList.add('past-section');
-                      } else {
-                        el.classList.add('future-section');
-                      }
-                      
-                      // Also highlight the current character position
-                      if (idx === typedText.length) {
-                        el.classList.add('char-current');
-                        el.classList.add('cursor-highlight');
-                      } else {
-                        el.classList.remove('char-current');
-                        el.classList.remove('cursor-highlight');
                       }
                     });
                   }
                 }
               }
-              
-              // Pulse effect for the current line for better visibility
-              document.querySelectorAll('.current-section').forEach(el => {
-                el.classList.add('highlight-pulse');
-                setTimeout(() => el.classList.remove('highlight-pulse'), 1000);
-              });
             }
             break;
           }
         }
       }
-    }, 50); // Check very frequently (50ms) for better synchronization
+    }, 100); // Check very frequently for better synchronization
     
     return () => clearInterval(syncInterval);
   }, [isPlaying, currentTime, lyrics, allLyrics, typedText, activeLyricIndex]);
@@ -676,15 +653,6 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
             el.classList.add('past-section');
           } else {
             el.classList.add('future-section');
-          }
-          
-          // Also highlight the character if it's the current position
-          if (idx === typedText.length) {
-            el.classList.add('char-current');
-            el.classList.add('cursor-highlight');
-          } else {
-            el.classList.remove('char-current');
-            el.classList.remove('cursor-highlight');
           }
         });
         
@@ -923,21 +891,6 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
                     index < allLyrics.indexOf(lyrics[activeLyricIndex + 1]?.text || '') + 
                       (lyrics[activeLyricIndex + 1]?.text.length || 0);
                   
-                  // Determine timing-based section (past, current, future)
-                  let timingSection = '';
-                  if (currentLyric) {
-                    const currentLyricPos = allLyrics.indexOf(currentLyric.text);
-                    const currentLyricEnd = currentLyricPos + currentLyric.text.length;
-                    
-                    if (index >= currentLyricPos && index < currentLyricEnd) {
-                      timingSection = 'current-section';
-                    } else if (index < currentLyricPos) {
-                      timingSection = 'past-section';
-                    } else {
-                      timingSection = 'future-section';
-                    }
-                  }
-                  
                   // Apply appropriate CSS classes based on status with improved highlighting
                   const classes = [
                     'relative',
@@ -949,8 +902,7 @@ export function TypingArea({ isDark = false }: TypingAreaProps) {
                     status === 'waiting' && isNextLyric ? 'char-next' : '',
                     status === 'waiting' && !isCurrentLyric && !isNextLyric ? 'char-inactive' : '',
                     isCurrentLyric && isCurrent ? 'pulse-animation' : '',
-                    isCurrentLyric ? 'current-lyric-char' : '',
-                    timingSection // Add timing-based section class
+                    isCurrentLyric ? 'current-lyric-char' : ''
                   ];
                   
                   return (
